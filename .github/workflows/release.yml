@@ -1,0 +1,97 @@
+name: release
+
+# Publishing runs only for a version tag, and only after the same gate
+# that guards the branch. A release that skipped the oracle tests would
+# ship a decoder validated against nothing but its own fixtures.
+on:
+  push:
+    tags: ['v*']
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.1
+          components: rustfmt, clippy
+
+      # lzop is the reference LZO compressor and the oracle for the
+      # #[ignore]-gated tests. It is run as an external process only;
+      # nothing from it is linked or redistributed.
+      - name: install lzop
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lzop
+
+      # A tag that disagrees with Cargo.toml would publish a version
+      # nobody asked for, and the mistake is unrecoverable once the
+      # version number is taken.
+      - name: verify tag matches Cargo.toml version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(grep -m1 '^version = ' Cargo.toml | sed 's/version = //; s/"//g')"
+          if [ "$tag" != "$version" ]; then
+            echo "tag v$tag does not match Cargo.toml version $version" >&2
+            exit 1
+          fi
+          echo "tag and Cargo.toml agree on $version"
+
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked --release
+      # The oracle tests are the ones that prove this decoder reads what
+      # a real encoder writes, so a release must not skip them.
+      - run: cargo test --locked --release -- --ignored
+
+  publish:
+    name: publish to crates.io
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.1
+
+      # A version already on crates.io cannot be published again, and a
+      # re-tag — or a first release published by hand before trusted
+      # publishing was configured — would otherwise fail this job every
+      # time. Skip instead, so the workflow is idempotent and a red run
+      # means something actually went wrong.
+      - name: Skip if this version is already on crates.io
+        id: already
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="$(grep -m1 '^name = ' Cargo.toml | sed 's/name = //; s/"//g')"
+          version="$(grep -m1 '^version = ' Cargo.toml | sed 's/version = //; s/"//g')"
+          if curl -sf "https://crates.io/api/v1/crates/$name/$version" \
+               -H 'User-Agent: release-workflow' >/dev/null 2>&1; then
+            echo "$name $version is already published; nothing to do."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$name $version is not on crates.io; publishing."
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: rust-lang/crates-io-auth-action@v1.0.4
+        if: steps.already.outputs.published == 'false'
+        id: auth
+
+      - name: cargo publish
+        if: steps.already.outputs.published == 'false'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --locked
