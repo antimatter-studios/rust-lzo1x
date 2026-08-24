@@ -1,0 +1,28 @@
+[package]
+name = "am-lzo1x"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Pure-Rust LZO1X decompressor. Implemented from the published stream grammar; no C bindings, no unsafe."
+repository = "https://github.com/antimatter-studios/rust-lzo1x"
+keywords = ["lzo", "lzo1x", "decompression", "compression", "squashfs"]
+categories = ["compression", "filesystem"]
+readme = "README.md"
+
+[lib]
+name = "lzo1x"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+
+[dev-dependencies]
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+panic = "unwind"
+
+[profile.dev]
+opt-level = 1
+panic = "unwind"
