@@ -119,6 +119,27 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 const E: Error = Error::Malformed;
 
+/// Each `0x00` byte in a zero-run length extension contributes this much
+/// to the running length.
+const ZERO_RUN_INCREMENT: usize = 255;
+
+/// Upper bound on a single extended length, as a defence against a
+/// corrupt all-zeros stream. This is not a format limit: the grammar
+/// permits arbitrarily long runs, but no real block is anywhere near
+/// 16 MiB, so a length beyond it means the input is garbage rather than
+/// merely large. Without this cap an all-zeros input loops until the
+/// length overflows.
+const MAX_EXTENDED_LENGTH: usize = 1 << 24;
+
+/// Base distance for the `0 0 0 1 H L L L` long-distance match bucket.
+/// A decoded distance equal to this base with no length bits is the
+/// end-of-stream marker rather than a match.
+const LONG_MATCH_DISTANCE_BASE: usize = 16384;
+
+/// Base distance for the three-byte match that follows a long literal
+/// run (the `state == 4` case of the `t < 16` bucket).
+const POST_LITERAL_MATCH_DISTANCE_BASE: usize = 2049;
+
 /// Decompress an LZO1X stream.
 ///
 /// `input` is the raw compressed block. `max_out` is an **upper bound**
@@ -180,10 +201,10 @@ impl Decoder<'_> {
             if b != 0 {
                 return len.checked_add(b as usize).ok_or(E);
             }
-            // Each zero byte adds 255. Cap the run length far below any
-            // legitimate block size to reject garbage early.
-            len = len.checked_add(255).ok_or(E)?;
-            if len > (1 << 24) {
+            // Cap the run length far below any legitimate block size so
+            // a corrupt stream is rejected early rather than looping.
+            len = len.checked_add(ZERO_RUN_INCREMENT).ok_or(E)?;
+            if len > MAX_EXTENDED_LENGTH {
                 return Err(E);
             }
         }
@@ -278,7 +299,7 @@ impl Decoder<'_> {
                         base + 2
                     };
                     let op = self.next_le16()? as usize;
-                    let dist = 16384 + (h << 14) + (op >> 2);
+                    let dist = LONG_MATCH_DISTANCE_BASE + (h << 14) + (op >> 2);
                     // EOS: the canonical marker is `11 00 00`
                     // (t=0x11, LE16=0x0000) -> dist == 16384, len == 3.
                     if op >> 2 == 0 && h == 0 {
@@ -316,7 +337,7 @@ impl Decoder<'_> {
                 let h = self.next()? as usize;
                 let dd = ((t >> 2) & 3) as usize;
                 let (len, dist) = if state == 4 {
-                    (3, (h << 2) + dd + 2049)
+                    (3, (h << 2) + dd + POST_LITERAL_MATCH_DISTANCE_BASE)
                 } else {
                     (2, (h << 2) + dd + 1)
                 };
