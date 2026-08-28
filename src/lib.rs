@@ -53,7 +53,10 @@
 //! 0 0 0 1 H L L L  (16..=31)
 //!     match, len = 2 + (LLL==0 ? zero_run+7 : LLL),
 //!     dist = 16384 + (H << 14) + (LE16_operand >> 2);
-//!     dist==16384 with no length bits is the END-OF-STREAM marker.
+//!     a token contributing nothing above that base -- H clear and the
+//!     operand's upper 14 bits zero -- is the END-OF-STREAM marker,
+//!     whatever LLL holds. 11 00 00 is the spelling encoders emit;
+//!     13 00 00 and 17 00 00 terminate just as surely.
 //! 0 0 1 L L L L L  (32..=63)
 //!     match, len = 2 + (LLLLL==0 ? zero_run+31 : LLLLL),
 //!     dist = (LE16_operand >> 2) + 1
@@ -132,8 +135,9 @@ const ZERO_RUN_INCREMENT: usize = 255;
 const MAX_EXTENDED_LENGTH: usize = 1 << 24;
 
 /// Base distance for the `0 0 0 1 H L L L` long-distance match bucket.
-/// A decoded distance equal to this base with no length bits is the
-/// end-of-stream marker rather than a match.
+/// A token in that bucket whose distance contribution above this base is
+/// zero is the end-of-stream marker rather than a match; its length bits
+/// are not part of that decision.
 const LONG_MATCH_DISTANCE_BASE: usize = 16384;
 
 /// Base distance for the three-byte match that follows a long literal
@@ -300,8 +304,31 @@ impl Decoder<'_> {
                     };
                     let op = self.next_le16()? as usize;
                     let dist = LONG_MATCH_DISTANCE_BASE + (h << 14) + (op >> 2);
-                    // EOS: the canonical marker is `11 00 00`
-                    // (t=0x11, LE16=0x0000) -> dist == 16384, len == 3.
+                    // End of stream, and the test is deliberately looser
+                    // than the canonical marker. Any token in this bucket
+                    // that contributes no distance above the base — H
+                    // clear and the operand's upper 14 bits zero — ends
+                    // the stream, whatever its length bits hold.
+                    // `11 00 00` is the spelling encoders emit, but
+                    // `13 00 00` and `17 00 00` terminate identically,
+                    // which is what the grammar asks for: the distance is
+                    // what discriminates a marker from a match, and a
+                    // length is meaningless on a token that copies nothing.
+                    //
+                    // Do not "tighten" this to also require zero length
+                    // bits. That would make the decoder stricter than the
+                    // format and reject streams a conforming encoder may
+                    // legitimately produce, and the two filesystems that
+                    // decode through here — btrfs extents and SquashFS
+                    // blocks — would fail to read rather than fail loudly.
+                    // The test `end_of_stream_marker_ignores_its_length_bits`
+                    // below pins the accepted set.
+                    //
+                    // `len` is computed above and discarded on this path,
+                    // which is order rather than oversight: when the
+                    // length field is zero its extension bytes sit *ahead
+                    // of* the operand in the stream, so the length has to
+                    // be decoded before the operand can be located at all.
                     if op >> 2 == 0 && h == 0 {
                         return Ok(());
                     }
@@ -415,6 +442,145 @@ mod tests {
         stream.extend_from_slice(&payload);
         stream.extend_from_slice(&EOS);
         assert_eq!(decompress(&stream, 23).unwrap(), payload);
+    }
+
+    /// `1 L L D D D S S` (`t >= 128`) — a 5..=8 byte match at a short
+    /// distance. Together with the `64..=127` bucket below this is where
+    /// most of a real LZO1X stream lives, so it is the bucket a refactor is
+    /// likeliest to break and the one that most needs a fixture that runs
+    /// without an external encoder installed.
+    ///
+    /// t = 0x8C: len = 5 + ((0x8C >> 5) & 3) = 5, and the byte after the
+    /// command byte is the distance extension H, so
+    /// dist = (0 << 3) + ((0x8C >> 2) & 7) + 1 = 4. New state = 0x8C & 3 = 0.
+    #[test]
+    fn short_distance_match_five_byte_bucket() {
+        let mut stream = vec![1u8, b'w', b'x', b'y', b'z'];
+        stream.extend_from_slice(&[0x8C, 0x00]);
+        stream.extend_from_slice(&EOS);
+        assert_eq!(decompress(&stream, 9).unwrap(), b"wxyzwxyzw");
+    }
+
+    /// `0 1 L D D D S S` (`64..=127`) — a 3..=4 byte match at a short
+    /// distance. The distance and state encodings are identical to the
+    /// bucket above; only the length differs.
+    ///
+    /// t = 0x4C: len = 3 + ((0x4C >> 5) & 1) = 3,
+    /// dist = (0 << 3) + ((0x4C >> 2) & 7) + 1 = 4.
+    #[test]
+    fn short_distance_match_three_byte_bucket() {
+        let mut stream = vec![1u8, b'w', b'x', b'y', b'z'];
+        stream.extend_from_slice(&[0x4C, 0x00]);
+        stream.extend_from_slice(&EOS);
+        assert_eq!(decompress(&stream, 7).unwrap(), b"wxyzwxy");
+    }
+
+    /// `t < 16` with a carried state of 1..=3 — the two-byte match. Reaching
+    /// it needs a preceding match whose SS bits are non-zero, because the
+    /// state is what selects this arm at all.
+    #[test]
+    fn two_byte_match_at_trailing_literal_state() {
+        let mut stream = vec![1u8, b'w', b'x', b'y', b'z'];
+        // 0x22 with LE16 0x000D: len = 4, dist = 4, and SS = 13 & 3 = 1, so
+        // one trailing literal ('A') is copied immediately after the match
+        // and the next instruction is decoded at state 1.
+        stream.extend_from_slice(&[0x22, 0x0D, 0x00, b'A']);
+        // t = 0x04 at state 1: DD = (4 >> 2) & 3 = 1 and H = 0x00, so
+        // dist = (0 << 2) + 1 + 1 = 2 and len = 2. New state = 4 & 3 = 0.
+        stream.extend_from_slice(&[0x04, 0x00]);
+        stream.extend_from_slice(&EOS);
+        assert_eq!(decompress(&stream, 11).unwrap(), b"wxyzwxyzAzA");
+    }
+
+    /// `t < 16` with the state-4 sentinel — the three-byte match that can
+    /// only follow a long literal run, whose distance base is
+    /// [`POST_LITERAL_MATCH_DISTANCE_BASE`].
+    ///
+    /// The fixture is kilobytes rather than bytes for a structural reason
+    /// worth recording so nobody tries to shrink it: the smallest distance
+    /// this arm can encode is 2049, and `copy_match` rejects a distance
+    /// larger than the output produced so far, so the token is unreachable
+    /// until ~2 KiB has already been emitted.
+    #[test]
+    fn three_byte_match_after_long_literal_run() {
+        // Four bootstrap literals, then one overlapping match at dist 4 that
+        // replays "wxyz" until the output is 2080 bytes long.
+        let mut stream = vec![21u8, b'w', b'x', b'y', b'z'];
+        // t = 0x20: the length field is zero, so the length comes from a
+        // zero-run extension of base 31. Eight 0x00 bytes add 255 each and
+        // the terminating 0x03 adds 3: 31 + 2040 + 3 = 2074, + 2 = 2076.
+        // LE16 0x000C then gives dist = 4 and state = 0.
+        stream.push(0x20);
+        stream.extend_from_slice(&[0u8; 8]);
+        stream.push(0x03);
+        stream.extend_from_slice(&[0x0C, 0x00]);
+        // A six-byte literal run, which is what arms the state-4 sentinel.
+        stream.push(3u8);
+        stream.extend_from_slice(b"ABCDEF");
+        // t = 0x04 at state 4: DD = 1 and H = 0x01, so
+        // dist = (1 << 2) + 1 + 2049 = 2054 and len = 3.
+        stream.extend_from_slice(&[0x04, 0x01]);
+        stream.extend_from_slice(&EOS);
+
+        let mut expected = b"wxyz".repeat(520);
+        expected.extend_from_slice(b"ABCDEF");
+        // 2086 - 2054 = 32, a whole number of "wxyz" periods from the start.
+        expected.extend_from_slice(b"wxy");
+        assert_eq!(decompress(&stream, expected.len()).unwrap(), expected);
+    }
+
+    /// `0 0 0 1 H L L L` decoding as a match rather than as the end-of-stream
+    /// marker. Structurally expensive for the same reason as the test above,
+    /// one window larger: [`LONG_MATCH_DISTANCE_BASE`] is 16384, so nothing
+    /// in this bucket can copy anything until 16 KiB of output exists.
+    #[test]
+    fn long_distance_match_is_not_the_end_of_stream_marker() {
+        let mut stream = vec![21u8, b'w', b'x', b'y', b'z'];
+        // Sixty-four 0x00 bytes plus a terminating 0x1F extend the length to
+        // 31 + 16320 + 31 = 16382, + 2 = 16384, at dist 4: output 16388 bytes.
+        stream.push(0x20);
+        stream.extend_from_slice(&[0u8; 64]);
+        stream.push(0x1F);
+        stream.extend_from_slice(&[0x0C, 0x00]);
+        // t = 0x13: H = 0 and LLL = 3, so len = 5. LE16 0x0005 gives a
+        // distance contribution of 1 -> dist = 16385, and SS = 1, so a
+        // single trailing literal ('Q') follows the match.
+        stream.extend_from_slice(&[0x13, 0x05, 0x00, b'Q']);
+        stream.extend_from_slice(&EOS);
+
+        let mut expected = b"wxyz".repeat(4097);
+        // 16388 - 16385 = 3, so the copy starts on the 'z' of the first period.
+        expected.extend_from_slice(b"zwxyz");
+        expected.push(b'Q');
+        assert_eq!(decompress(&stream, expected.len()).unwrap(), expected);
+    }
+
+    /// The marker is keyed on the distance contribution alone. Every command
+    /// byte in `0x11..=0x17` paired with a zero operand ends the stream, not
+    /// just the canonical `11 00 00`, because the length bits play no part in
+    /// the test. This is here to stop the check being "tightened" to also
+    /// require zero length bits — that would reject streams the format
+    /// permits, and both callers of this crate decode through this bucket.
+    #[test]
+    fn end_of_stream_marker_ignores_its_length_bits() {
+        for t in 0x11u8..=0x17 {
+            let stream = [21u8, b'a', b'b', b'c', b'd', t, 0x00, 0x00];
+            assert_eq!(
+                decompress(&stream, 4),
+                Ok(b"abcd".to_vec()),
+                "command byte {t:#04x} contributes no distance and must terminate",
+            );
+        }
+    }
+
+    /// The other half of that rule: a non-zero distance contribution is a
+    /// match no matter how marker-shaped the rest of the token looks. 0x19
+    /// sets H, so `19 00 00` asks for a match 32768 bytes back and fails for
+    /// want of history rather than ending the stream.
+    #[test]
+    fn end_of_stream_bucket_with_h_set_is_a_match() {
+        let stream = [21u8, b'a', b'b', b'c', b'd', 0x19, 0x00, 0x00];
+        assert_eq!(decompress(&stream, 4), Err(Error::Malformed));
     }
 
     #[test]
