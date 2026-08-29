@@ -19,7 +19,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.1
+          toolchain: 1.95.0
           components: rustfmt, clippy
 
       # lzop is the reference LZO compressor and the oracle for the
@@ -63,7 +63,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.1
+          toolchain: 1.95.0
 
       # A version already on crates.io cannot be published again, and a
       # re-tag — or a first release published by hand before trusted
