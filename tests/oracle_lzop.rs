@@ -120,9 +120,19 @@ fn parse_lzop(data: &[u8]) -> Vec<Block> {
         if d_csum {
             let _ = c.u32();
         }
+        // One domain question — did the encoder actually compress this
+        // block — decides two things eight lines apart: whether a
+        // compressed-side checksum is present in the stream, and whether
+        // the payload is an LZO1X stream or the original bytes. Written
+        // twice in inverted form, a disagreement between them would
+        // desync the cursor and every later block would be read from the
+        // wrong offset, surfacing as a confusing decode failure rather
+        // than a parse error. Asked once.
+        let stored = compressed_len >= uncompressed_len;
+
         // The compressed-side checksum is only written when the block
         // actually got compressed.
-        if c_csum && compressed_len < uncompressed_len {
+        if c_csum && !stored {
             let _ = c.u32();
         }
         let payload = data[c.i..c.i + compressed_len].to_vec();
@@ -130,7 +140,7 @@ fn parse_lzop(data: &[u8]) -> Vec<Block> {
         blocks.push(Block {
             compressed: payload,
             uncompressed_len,
-            stored: compressed_len >= uncompressed_len,
+            stored,
         });
     }
     blocks

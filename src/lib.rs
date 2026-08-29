@@ -134,11 +134,50 @@ const ZERO_RUN_INCREMENT: usize = 255;
 /// length overflows.
 const MAX_EXTENDED_LENGTH: usize = 1 << 24;
 
+/// Ceiling on the buffer reserved before any input is validated.
+///
+/// The third leg of the same defence as `max_out` and
+/// [`MAX_EXTENDED_LENGTH`], and the only one that was anonymous.
+/// `max_out` is supplied by the caller, so reserving it outright would
+/// let a bogus bound drive a large allocation before a single byte of
+/// the stream has been checked. Capping the EAGER reservation costs one
+/// reallocation on a genuinely large block and bounds what a wrong
+/// argument can ask for; the real limit is still enforced per copy.
+const INITIAL_CAPACITY_CAP: usize = 1 << 20;
+
 /// Base distance for the `0 0 0 1 H L L L` long-distance match bucket.
 /// A token in that bucket whose distance contribution above this base is
 /// zero is the end-of-stream marker rather than a match; its length bits
 /// are not part of that decision.
 const LONG_MATCH_DISTANCE_BASE: usize = 16384;
+
+/// Split an LE16 match operand into its two fields.
+///
+/// The grammar writes the operand as `DDDDDDDD DDDDDDSS`: fourteen bits
+/// of distance contribution above the bucket's base, then two bits of
+/// trailing-literal count. Both were open-coded as raw shifts at five
+/// sites, where `>> 2` collides visually with the unrelated `>> 2` that
+/// extracts distance bits from a COMMAND byte.
+fn split_operand(op: usize) -> (usize, usize) {
+    (op >> 2, op & 3)
+}
+
+/// The value of `state` meaning "a long literal run just ended", as
+/// opposed to a count of trailing literals.
+///
+/// `state` carries two incompatible meanings. For `0..=3` it is a
+/// COUNT — how many literals to copy after the next match. This value
+/// is not a count; it is a sentinel selecting a different decode for
+/// the `t < 16` bucket.
+///
+/// The distinction matters at the literal copy near the end of the
+/// loop, which copies `state` bytes. That is correct only because
+/// `state` can never hold this value there: every path reaching it has
+/// just assigned `t & 3` or `op & 3`, and the long-literal path
+/// `continue`s before it. A future arm that assigned the sentinel and
+/// fell through would emit four garbage bytes rather than fail, so the
+/// invariant is asserted where it is relied on.
+const LONG_LITERAL_RUN_STATE: usize = 4;
 
 /// Base distance for the three-byte match that follows a long literal
 /// run (the `state == 4` case of the `t < 16` bucket).
@@ -162,7 +201,7 @@ pub fn decompress(input: &[u8], max_out: usize) -> Result<Vec<u8>> {
     let mut d = Decoder {
         input,
         ip: 0,
-        out: Vec::with_capacity(max_out.min(1 << 20)),
+        out: Vec::with_capacity(max_out.min(INITIAL_CAPACITY_CAP)),
         max_out,
     };
     d.run()?;
@@ -255,7 +294,7 @@ impl Decoder<'_> {
             self.ip += 1;
             let n = (first - 17) as usize;
             self.copy_literals(n)?;
-            state = n.min(4);
+            state = n.min(LONG_LITERAL_RUN_STATE);
         } else {
             state = 0;
         }
@@ -290,12 +329,15 @@ impl Decoder<'_> {
                         base + 2
                     };
                     let op = self.next_le16()? as usize;
-                    let dist = (op >> 2) + 1;
-                    (len, dist, op & 3)
+                    let (dist_bits, next_state) = split_operand(op);
+                    (len, dist_bits + 1, next_state)
                 } else {
                     // 0 0 0 1 H L L L — match, distance 16384..=49151,
                     // plus the end-of-stream marker.
-                    let h = ((t >> 3) & 1) as usize;
+                    // Not an extension byte, unlike the `h` in the arms
+                    // above and below: one bit lifted out of the command
+                    // byte, contributing 2^14 to the distance.
+                    let dist_high_bit = ((t >> 3) & 1) as usize;
                     let base = (t & 7) as usize;
                     let len = if base == 0 {
                         self.extend_length(7)? + 2
@@ -303,7 +345,8 @@ impl Decoder<'_> {
                         base + 2
                     };
                     let op = self.next_le16()? as usize;
-                    let dist = LONG_MATCH_DISTANCE_BASE + (h << 14) + (op >> 2);
+                    let (dist_bits, next_state) = split_operand(op);
+                    let dist = LONG_MATCH_DISTANCE_BASE + (dist_high_bit << 14) + dist_bits;
                     // End of stream, and the test is deliberately looser
                     // than the canonical marker. Any token in this bucket
                     // that contributes no distance above the base — H
@@ -329,10 +372,10 @@ impl Decoder<'_> {
                     // length field is zero its extension bytes sit *ahead
                     // of* the operand in the stream, so the length has to
                     // be decoded before the operand can be located at all.
-                    if op >> 2 == 0 && h == 0 {
+                    if dist_bits == 0 && dist_high_bit == 0 {
                         return Ok(());
                     }
-                    (len, dist, op & 3)
+                    (len, dist, next_state)
                 };
 
                 self.copy_match(dist, len)?;
@@ -352,7 +395,7 @@ impl Decoder<'_> {
                         t as usize + 3
                     };
                     self.copy_literals(n)?;
-                    state = 4;
+                    state = LONG_LITERAL_RUN_STATE;
                     continue;
                 }
                 // Both remaining cases are a short match whose command byte
@@ -363,7 +406,7 @@ impl Decoder<'_> {
                 //   state 4     -> a 3-byte match,  dist = (H<<2)+DD+2049
                 let h = self.next()? as usize;
                 let dd = ((t >> 2) & 3) as usize;
-                let (len, dist) = if state == 4 {
+                let (len, dist) = if state == LONG_LITERAL_RUN_STATE {
                     (3, (h << 2) + dd + POST_LITERAL_MATCH_DISTANCE_BASE)
                 } else {
                     (2, (h << 2) + dd + 1)
@@ -373,6 +416,14 @@ impl Decoder<'_> {
             }
 
             // After a match, copy `state` trailing literals immediately.
+            // The sentinel is never live here — see LONG_LITERAL_RUN_STATE.
+            // Asserted rather than commented alone, so a future arm that
+            // broke the invariant would fail a debug build instead of
+            // quietly copying four bytes that are not literals.
+            debug_assert!(
+                state < LONG_LITERAL_RUN_STATE,
+                "state {state} is the long-literal sentinel, not a literal count"
+            );
             if state > 0 {
                 self.copy_literals(state)?;
             }
