@@ -23,3 +23,10 @@ test-disks/test-run/
 **/.vagrant/
 test-disks/.vm-cache/
 .claude/
+
+# Build output. `chore staticlib` writes the archive here for a consumer to
+# copy out of (`chore artifact` prints this directory).
+/dist/
+
+# chore fingerprint cache (sources:/generates: checksums). Derived data.
+.chore/

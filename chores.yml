@@ -1,0 +1,147 @@
+version: "3"
+chore_min_version: 0.6.0
+
+# THE CONTRACT THIS FILE EXISTS TO OWN.
+#
+# How to build rust-lzo1x is knowledge that belongs to rust-lzo1x. This was
+# the last crate in the family without a chores.yml, which meant `chore lint`
+# — the one command that reproduces the CI gate locally — did not exist here
+# and the gate could only be discovered from a red build.
+#
+# WHAT MAKES THIS CRATE DIFFERENT FROM ITS SIBLINGS, and why the tasks below
+# are not a copy of theirs:
+#
+#   1. NO C ABI AND NO HEADERS. Every sibling library emits `include/<name>.h`
+#      and a set of `extern "C"` exports. This crate has neither: it is a pure
+#      Rust decompressor consumed as an rlib. `staticlib` therefore copies an
+#      archive and nothing else.
+#
+#   2. NOTHING LINKS ITS ARCHIVE. rust-fs-squashfs takes this crate as
+#      `am-lzo1x = "0.1.0"` — a normal crates.io dependency resolved by cargo,
+#      not a `.a` handed to ld. So `staticlib` exists for uniformity with the
+#      sibling libraries and for anyone building this crate alone; no consumer
+#      in the family uses its output today.
+#
+#   3. CI RUNS THE SUITE TWICE. Once normally, and once with `--ignored` to
+#      pick up the lzop oracle in tests/oracle_lzop.rs. See `test` below —
+#      getting that wrong would make the local gate quietly weaker than CI,
+#      which is the exact failure this file exists to prevent.
+vars:
+  TRIPLE: aarch64-apple-darwin
+  LIBNAME: lzo1x
+
+tasks:
+  lint:
+    desc: Formatting and clippy, exactly as CI runs them
+    # `--locked` is not decoration. It makes the build fail rather than
+    # silently update Cargo.lock, which is what keeps a local gate and CI
+    # checking the same dependency versions — and it is what the release
+    # process relies on.
+    #
+    # This exists so the CI gate can be reproduced locally. If the two ever
+    # differ, this is the copy that is wrong.
+    cmds:
+      - cargo fmt --check
+      - cargo clippy --locked --all-targets -- -D warnings
+
+  test:
+    desc: Test suite, including the lzop oracle when lzop is installed
+    # CI runs `cargo test --locked --release` AND the same again with
+    # `-- --ignored`. Running only the first here would make this task a
+    # WEAKER gate than CI while looking like the same thing.
+    cmds:
+      - cargo test --locked --release
+      - task: test:oracle
+
+  test:oracle:
+    desc: The lzop oracle suite, which is skipped with a reason when lzop is absent
+    # `silent: true` because chore echoes each command's SOURCE before running
+    # it. Without it the skip message below is printed even on a run that does
+    # NOT skip — output that contradicts what actually happened, which is worse
+    # than no message at all.
+    silent: true
+    # The `#[ignore]` gate exists for a reason tests/oracle_lzop.rs states
+    # outright: a fresh checkout without lzop must still have a green
+    # `cargo test`. So this runs the oracle when lzop is present and says
+    # plainly when it is not, rather than either failing on a missing optional
+    # tool or skipping in silence. Silence is the bad option — it reads
+    # identically to "the oracle passed".
+    cmds:
+      - |
+        if command -v lzop >/dev/null 2>&1; then
+          cargo test --locked --release -- --ignored
+        else
+          echo "SKIPPED the lzop oracle: lzop is not installed."
+          echo "  It decodes streams from the reference compressor, which is"
+          echo "  the only check here that is not self-referential. CI installs"
+          echo "  lzop and runs it; this machine did not, so this run is weaker"
+          echo "  than the one that will gate the pull request."
+          echo "  Install it with: brew install lzop"
+        fi
+
+  build:
+    desc: Debug build
+    cmds: ['cargo build']
+
+  clean:
+    desc: Remove this crate's cargo output
+    cmds: ['cargo clean']
+
+  staticlib:
+    desc: Build the static library into this crate's dist/
+    # NO `out` ARGUMENT, deliberately, matching the sibling libraries. A
+    # library does not write into its consumer: it builds into its own dist/
+    # and a consumer asks where that is via `chore artifact`. Inverting it
+    # that way lets this crate change its output layout without every
+    # consumer knowing, and keeps it usable with no consumer at all.
+    vars:
+      OUT: 'dist'
+
+    # These patterns are LITERAL on purpose. chore records a fingerprint by
+    # calling fingerprint.Save WITHOUT a renderer, so a pattern containing
+    # {{ }} is expanded against the raw text, matches nothing, and stores the
+    # empty-set hash — the task then never registers as up to date.
+    #
+    # No 'include/*.h' entry, unlike the siblings: this crate has no headers.
+    sources:
+      - Cargo.toml
+      - 'src/**/*.rs'
+
+    # Templated, which is fine here where it is not fine above: UpToDate
+    # renders these before expanding them, and the entry is an exact path
+    # rather than a glob, so a missing artifact is caught by the pattern
+    # failing to match.
+    generates:
+      - '{{.OUT}}/lib{{.LIBNAME}}.a'
+
+    cmds:
+      # Idempotent: rustup answers "up to date" without touching the network
+      # when the target is already installed. It runs here rather than in a
+      # consumer because the triple is ours.
+      - 'rustup target add {{.TRIPLE}}'
+      - 'cargo build --release --target {{.TRIPLE}}'
+      - 'mkdir -p "{{.OUT}}"'
+      - 'cp target/{{.TRIPLE}}/release/lib{{.LIBNAME}}.a "{{.OUT}}/lib{{.LIBNAME}}.a"'
+
+  artifact:
+    desc: Print the absolute path of the directory holding the built outputs
+    # `silent: true` is what makes this usable as a VALUE — without it chore
+    # echoes each command and a caller capturing stdout gets the echo too.
+    silent: true
+    # NO `deps: [staticlib]`. chore prints "task: staticlib is up to date" on
+    # STDOUT, which a caller capturing this as a value receives as PART OF THE
+    # VALUE — measured on rust-blk-probe, where the capture came back as two
+    # lines and the caller's path check failed. A value-returning task returns
+    # a value and does nothing else; the caller builds first, then asks. Two
+    # calls, on purpose.
+    #
+    # IT PRINTS A DIRECTORY, NOT A FILE, even though dist/ holds exactly one
+    # file here and rust-blk-probe's single-output `artifact` names its file.
+    # The sibling LIBRARIES all print a directory and consumers copy its
+    # contents; matching them means a consumer needs one rule for every
+    # library, and it means adding a header later would not change this
+    # contract. A CONSUMER COPIES THE CONTENTS of what this prints.
+    cmds:
+      - 'cd "{{.OUT}}" && pwd -P'
+    vars:
+      OUT: 'dist'
