@@ -68,9 +68,10 @@ consumers are unaffected.
 
   It exists because the `lzo1x` crate already on crates.io is **GPL-2.0**,
   which this project cannot take a dependency on. That is also why this crate
-  is named `am-lzo1x` rather than `lzo1x`. Decompression only — nothing here
-  needs to produce an LZO1X stream, only read the ones EROFS and SquashFS
-  images contain.
+  is named `am-lzo1x` rather than `lzo1x`. Decompression only — the two
+  consumers, `am-fs-squashfs` and `am-fs-btrfs`, both only ever read an LZO1X
+  stream. SquashFS has no write path at all, and btrfs writes uncompressed
+  extents.
 
 [Unreleased]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.1.2...HEAD
 [0.1.2]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.1.1...v0.1.2
