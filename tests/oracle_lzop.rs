@@ -316,3 +316,255 @@ fn roundtrip_many_small_sizes() {
         assert_roundtrip_inner(&repetitive(len), "-9", len >= 256);
     }
 }
+
+// =====================================================================
+// The other direction: we compress, the reference decompresses.
+//
+// Everything above proves the DECODER accepts real streams. It says
+// nothing about the encoder, and the encoder cannot be checked by
+// round-tripping through our own decoder either: that decoder is
+// deliberately more permissive than the format (see the end-of-stream
+// comment in src/lib.rs), so a stream this crate reads back perfectly
+// may still be one the reference refuses.
+//
+// The only way to know is to hand our output to the reference and see
+// whether it gives the bytes back. That needs a container built around
+// our raw block, which is the same format parsed above — so it is built
+// here, from the same constants, rather than in a second place.
+// =====================================================================
+
+/// Exit status used by [`lzop_decompress`] to mean "this input cannot be
+/// expressed in the container", as distinct from "the reference rejected
+/// our stream". Conflating them would let an unrepresentable input read
+/// as a passing check.
+enum Wrapped {
+    Container(Vec<u8>),
+    /// The container identifies a compressed block SOLELY by its length
+    /// being below the uncompressed length — there is no flag. So a
+    /// block that did not shrink cannot be carried as compressed at all;
+    /// the reference would read it back as raw bytes and report a
+    /// checksum error that looks exactly like a broken encoder.
+    NotRepresentable(&'static str),
+}
+
+/// Build an lzop container around one raw block we produced.
+fn wrap_lzop(block: &[u8], original: &[u8]) -> Wrapped {
+    if original.is_empty() {
+        // A block declaring zero uncompressed bytes IS the end-of-blocks
+        // marker, so an empty payload has no representation. Nothing to
+        // do with our stream — the unit tests cover empty input.
+        return Wrapped::NotRepresentable("empty payload has no container representation");
+    }
+    if block.len() >= original.len() {
+        return Wrapped::NotRepresentable("block did not shrink, so it cannot be carried");
+    }
+
+    let mut header = Vec::new();
+    header.extend_from_slice(&0x1030u16.to_be_bytes()); // version
+    header.extend_from_slice(&0x20A0u16.to_be_bytes()); // library version
+    header.extend_from_slice(&0x0940u16.to_be_bytes()); // version needed
+    header.push(1); // method: LZO1X-1
+    header.push(1); // level
+                    // Checksum the UNCOMPRESSED side only. The reference verifies it
+                    // after decoding, so it is a second, independent check that our
+                    // encoder preserved the bytes — not merely that it produced
+                    // something decodable.
+    header.extend_from_slice(&F_ADLER32_D.to_be_bytes());
+    header.extend_from_slice(&0o644u32.to_be_bytes()); // mode
+    header.extend_from_slice(&0u32.to_be_bytes()); // mtime low
+    header.extend_from_slice(&0u32.to_be_bytes()); // mtime high
+    header.push(0); // no filename
+    let header_checksum = adler32(&header);
+    header.extend_from_slice(&header_checksum.to_be_bytes());
+
+    let mut out = Vec::new();
+    out.extend_from_slice(&LZOP_MAGIC);
+    out.extend_from_slice(&header);
+    out.extend_from_slice(&(original.len() as u32).to_be_bytes());
+    out.extend_from_slice(&(block.len() as u32).to_be_bytes());
+    out.extend_from_slice(&adler32(original).to_be_bytes());
+    out.extend_from_slice(block);
+    out.extend_from_slice(&0u32.to_be_bytes()); // end of blocks
+    Wrapped::Container(out)
+}
+
+/// Adler-32, as the container specifies. Written out rather than pulled
+/// in as a dependency: this crate has none, and a test is not a reason
+/// to acquire the first one.
+fn adler32(data: &[u8]) -> u32 {
+    const MOD: u32 = 65521;
+    let (mut a, mut b) = (1u32, 0u32);
+    for &byte in data {
+        a = (a + byte as u32) % MOD;
+        b = (b + a) % MOD;
+    }
+    (b << 16) | a
+}
+
+/// Compress `payload` with THIS crate, hand it to the reference, and
+/// require the original bytes back.
+///
+/// Returns `false` when the check could not run, so a caller can tell a
+/// skip from a pass.
+fn assert_reference_reads_our_stream(payload: &[u8]) -> bool {
+    if Command::new("lzop").arg("--version").output().is_err() {
+        eprintln!("lzop not installed — skipping");
+        return false;
+    }
+
+    let block = lzo1x::compress(payload);
+    let container = match wrap_lzop(&block, payload) {
+        Wrapped::Container(c) => c,
+        Wrapped::NotRepresentable(why) => {
+            eprintln!("skipping {} byte payload: {why}", payload.len());
+            return false;
+        }
+    };
+
+    static SEQ: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "lzo1x-emit-{}-{}-{}",
+        std::process::id(),
+        payload.len(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let packed = dir.join("ours.lzo");
+    std::fs::write(&packed, &container).unwrap();
+
+    let unpacked = dir.join("ours.out");
+    let out = Command::new("lzop")
+        .arg("-d")
+        .arg("-f")
+        .arg("-o")
+        .arg(&unpacked)
+        .arg(&packed)
+        .output()
+        .expect("run lzop");
+
+    let verdict = if out.status.success() {
+        let back = std::fs::read(&unpacked).unwrap();
+        assert_eq!(
+            back.len(),
+            payload.len(),
+            "the reference decoded our stream to {} bytes, expected {}",
+            back.len(),
+            payload.len()
+        );
+        assert!(
+            back == payload,
+            "the reference decoded our stream to different bytes"
+        );
+        true
+    } else {
+        panic!(
+            "the reference refused a stream we produced ({} bytes -> {} bytes): {}",
+            payload.len(),
+            block.len(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    };
+    std::fs::remove_dir_all(&dir).ok();
+    verdict
+}
+
+#[test]
+#[ignore = "requires lzop"]
+fn the_reference_reads_what_we_emit() {
+    let mut ran = 0;
+    for payload in [
+        repetitive(64 * 1024),
+        repetitive(4096),
+        repetitive(300),
+        vec![b'A'; 100_000],
+        // Long literal runs interleaved with matches: the encoder has to
+        // switch between the inline and long-form literal encodings.
+        {
+            let mut v = Vec::new();
+            for i in 0..16 {
+                v.extend_from_slice(&repetitive(4096));
+                v.extend_from_slice(&pseudo_random(4096, i + 1));
+            }
+            v
+        },
+        // Structured binary, the shape a filesystem block actually has.
+        (0..=255u8).cycle().take(16 * 1024).collect(),
+    ] {
+        if assert_reference_reads_our_stream(&payload) {
+            ran += 1;
+        }
+    }
+    assert!(
+        ran > 0,
+        "no payload was actually checked — the test proved nothing"
+    );
+}
+
+/// Back-reference distances at and either side of the boundary between
+/// the two match buckets this encoder uses.
+///
+/// The boundary is where an off-by-one is silent rather than loud: a
+/// distance that should use the ≤16384 bucket, encoded in the other one,
+/// produces a token contributing no distance — which IS the
+/// end-of-stream marker. The stream truncates and decodes cleanly to
+/// fewer bytes.
+///
+/// The filler is repetitive, not random. A random filler makes the
+/// payload incompressible, the container cannot carry a block that did
+/// not shrink, and the check would skip — leaving the boundary these
+/// cases exist to test entirely unexercised.
+#[test]
+#[ignore = "requires lzop"]
+fn the_reference_reads_our_matches_across_the_bucket_boundary() {
+    const MARKER: &[u8] = b"MATCHME!";
+    let mut ran = 0;
+    for distance in [16_383usize, 16_384, 16_385, 32_768, 49_150, 60_000] {
+        let filler: Vec<u8> = b"0123456789abcdef"
+            .iter()
+            .copied()
+            .cycle()
+            .take(distance - MARKER.len())
+            .collect();
+        let mut payload = Vec::with_capacity(distance + 16);
+        payload.extend_from_slice(MARKER);
+        payload.extend_from_slice(&filler);
+        payload.extend_from_slice(MARKER);
+        payload.extend_from_slice(b"tail");
+        if assert_reference_reads_our_stream(&payload) {
+            ran += 1;
+        }
+    }
+    assert_eq!(ran, 6, "some boundary cases did not run");
+}
+
+/// Lengths either side of where the zero-run extension needs another
+/// continuation byte, on both the literal and the match side.
+#[test]
+#[ignore = "requires lzop"]
+fn the_reference_reads_our_length_extensions() {
+    let mut ran = 0;
+    for len in [253usize, 254, 255, 256, 257, 509, 510, 511, 1023, 1024] {
+        if assert_reference_reads_our_stream(&vec![b'Z'; len]) {
+            ran += 1;
+        }
+    }
+    assert!(ran >= 8, "only {ran} of 10 length cases ran");
+}
+
+/// A leading literal run of 238 bytes is the longest the first command
+/// byte can carry as `length + 17`; at 239 the encoding changes shape.
+/// Each payload carries a compressible tail so the block shrinks and the
+/// container can hold it — otherwise the very case being tested skips.
+#[test]
+#[ignore = "requires lzop"]
+fn the_reference_reads_our_leading_literal_runs() {
+    let mut ran = 0;
+    for len in [17usize, 237, 238, 239, 240, 4096] {
+        let mut payload = pseudo_random(len, len as u64 + 1);
+        payload.extend_from_slice(&repetitive(2048));
+        if assert_reference_reads_our_stream(&payload) {
+            ran += 1;
+        }
+    }
+    assert_eq!(ran, 6, "some leading-literal cases did not run");
+}

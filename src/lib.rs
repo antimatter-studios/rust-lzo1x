@@ -93,6 +93,9 @@
 
 use std::fmt;
 
+mod compress;
+pub use compress::compress;
+
 /// The single failure mode of the decoder: the input is not a
 /// well-formed LZO1X stream, or decoding it would exceed `max_out`.
 ///

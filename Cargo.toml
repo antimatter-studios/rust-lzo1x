@@ -1,9 +1,9 @@
 [package]
 name = "am-lzo1x"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
-description = "Pure-Rust LZO1X decompressor. Implemented from the published stream grammar; no C bindings, no unsafe."
+description = "Pure-Rust LZO1X compressor and decompressor. Implemented from the published stream grammar; no C bindings, no unsafe, no dependencies."
 repository = "https://github.com/antimatter-studios/rust-lzo1x"
 keywords = ["lzo", "lzo1x", "decompression", "compression", "squashfs"]
 categories = ["compression", "filesystem"]
@@ -12,6 +12,14 @@ readme = "README.md"
 [lib]
 name = "lzo1x"
 crate-type = ["staticlib", "rlib"]
+
+# Raw-block compress/decompress, so the cross-validation gate against
+# the reference tool is a shell one-liner rather than a harness that has
+# to link this crate. No dependencies: the crate has none and this does
+# not introduce the first.
+[[bin]]
+name = "lzo1x"
+path = "src/bin/lzo1x.rs"
 
 [dependencies]
 

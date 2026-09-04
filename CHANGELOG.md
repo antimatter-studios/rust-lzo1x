@@ -6,6 +6,58 @@ never does.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-09-04
+
+Minor rather than patch: `compress` is new public API, and for a `0.x`
+crate the minor is the compatibility boundary. Nothing existing changed —
+`decompress` and `Error` are untouched, so `0.1` callers need no edits.
+
+### Added
+
+- **An LZO1X encoder — `lzo1x::compress`.** Written by inverting this
+  crate's own decoder, so it needed no external source and its
+  provenance is the decoder's: clean-room, MIT. Inverting a decoder is
+  also a much weaker obligation than writing one, because an encoder
+  need only emit streams a conforming decoder accepts and is free to use
+  a subset of the grammar. This one uses two of the four match buckets;
+  the two it omits encode a short match one byte more cheaply, so the
+  cost is ratio, not correctness.
+
+  `compress` is infallible. Input with no exploitable redundancy comes
+  back larger than it went in — a per-literal-run overhead the format
+  cannot avoid — so callers should compare lengths and store the
+  original when this is longer, which is what both filesystems using
+  this format already do.
+
+- **A CLI, `lzo1x`**, with `compress` and `decompress` subcommands over
+  raw blocks — no container, no framing, which is what a Btrfs extent or
+  a SquashFS block actually holds. Adds no dependency.
+
+- **Bidirectional cross-validation against the reference implementation.**
+  The existing oracle only ran one way: the reference compresses and we
+  decompress. That says nothing about an encoder, and neither does
+  round-tripping through our own decoder — it is deliberately more
+  permissive than the format, so a stream this crate reads back
+  perfectly may still be one the kernel refuses. The new tests hand our
+  output to the reference and require the bytes back, covering the match
+  bucket boundary, the length extensions and the leading-literal-run
+  encodings.
+
+  The container these need is built from the same constants the existing
+  parser reads, rather than in a second place. The reference tool stays
+  at arm's length: separate process, never linked, never copied from.
+
+### Notes
+
+- The encoder reserves three trailing literals rather than ending a
+  stream on a match. Measured, not assumed: removing the reserve leaves
+  the whole cross-validation gate passing, so the reference decompressor
+  does not require it. It stays because LZO ships a second, faster
+  decompressor that copies in machine words and wants slack past the end
+  of the stream — which this gate cannot exercise. Three bytes is a
+  cheap way to stay inside what both variants read.
+
+
 ## [0.1.2] — 2026-09-04
 
 No public API change — the diff touches no `pub` signature, so `^0.1`
@@ -73,7 +125,8 @@ consumers are unaffected.
   stream. SquashFS has no write path at all, and btrfs writes uncompressed
   extents.
 
-[Unreleased]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/antimatter-studios/rust-lzo1x/releases/tag/v0.1.0
