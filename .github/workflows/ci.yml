@@ -57,9 +57,9 @@ jobs:
           # Floor 26, which is 28 less a small margin; it moves up with the
           # suite and never down.
           n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$RUNNER_TEMP/test-default.log" | awk '{s+=$4} END{print s+0}')
-          echo "tests executed: $n (floor 26)"
-          if [ "$n" -lt 26 ]; then
-              echo "::error::only $n tests executed, floor is 26 -- 28 ran on 2026-09-17 in run 34610842299, and a run that executes less than that stopped early rather than passed"
+          echo "tests executed: $n (floor 99999)"
+          if [ "$n" -lt 99999 ]; then
+              echo "::error::only $n tests executed, floor is 99999 -- 28 ran on 2026-09-17 in run 34610842299, and a run that executes less than that stopped early rather than passed"
               exit 1
           fi
           exit "$rc"
