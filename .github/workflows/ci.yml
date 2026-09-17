@@ -42,7 +42,78 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked --release
+      - name: cargo test (default selection, with a floor)
+        run: |
+          cargo test --locked --release 2>&1 | tee "$RUNNER_TEMP/test-default.log"
+          rc=${PIPESTATUS[0]}
+          # A FLOOR, BECAUSE THE FAILURE MODE HERE IS AN ABSENCE. `cargo test`
+          # exits 0 on "0 passed; 0 failed", so a filter that selects nothing,
+          # a build that produced no test binaries, or a suite list that came
+          # out empty all report exactly the same green as a full run. Nothing
+          # in the exit status can tell those apart -- only a count can.
+          # Measured 2026-09-17 on run 34610842299 (the CI run for fbb69d3 on
+          # main): 28 executed on both legs -- 27 lib unit tests plus 1 doc
+          # test, the oracle tests being #[ignore]d out of this selection.
+          # Floor 26, which is 28 less a small margin; it moves up with the
+          # suite and never down.
+          n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$RUNNER_TEMP/test-default.log" | awk '{s+=$4} END{print s+0}')
+          echo "tests executed: $n (floor 26)"
+          if [ "$n" -lt 26 ]; then
+              echo "::error::only $n tests executed, floor is 26 -- 28 ran on 2026-09-17 in run 34610842299, and a run that executes less than that stopped early rather than passed"
+              exit 1
+          fi
+          exit "$rc"
       # Oracle tests are #[ignore]-gated so a fresh checkout without lzop
       # still has a green `cargo test`. CI installed it above, so opt in.
-      - run: cargo test --locked --release -- --ignored
+      - name: cargo test --ignored (oracle selection, with its own floor)
+        run: |
+          cargo test --locked --release -- --ignored 2>&1 | tee "$RUNNER_TEMP/test-ignored.log"
+          rc=${PIPESTATUS[0]}
+          # A SEPARATE FLOOR, BECAUSE THIS SELECTION IS DISJOINT FROM THE ONE
+          # ABOVE AND CAN EMPTY ON ITS OWN. `-- --ignored` runs only the tests
+          # marked #[ignore], and today that is the entire lzop oracle suite --
+          # the only thing in this repo that checks the decoder against a real
+          # LZO implementation rather than against fixtures we wrote ourselves.
+          # If the #[ignore] attributes were dropped, the oracle tests moved to
+          # another file, or lzop stopped being installed on the image, this
+          # step would select zero tests, print "0 passed", exit 0, and the
+          # gate would go green having verified nothing against the reference.
+          # That is silent today; the count is what makes it loud.
+          # Measured 2026-09-17 on run 34610842299: 10 executed on both legs.
+          # Floor 9. Small numbers still need a floor above zero -- zero is the
+          # failure being guarded against.
+          n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$RUNNER_TEMP/test-ignored.log" | awk '{s+=$4} END{print s+0}')
+          echo "ignored tests executed: $n (floor 9)"
+          if [ "$n" -lt 9 ]; then
+              echo "::error::only $n ignored tests executed, floor is 9 -- 10 ran on 2026-09-17 in run 34610842299, and a run that executes less than that stopped early rather than passed"
+              exit 1
+          fi
+          exit "$rc"
+
+  # The aggregate gate. Branch protection names checks as strings, so a list of
+  # matrix legs has to be kept in step with the matrix by hand, and the day
+  # someone adds a leg the new leg gates nothing until a human remembers to go
+  # and require it. This job `needs:` the matrix as a whole, so it covers every
+  # leg the matrix ever grows.
+  #
+  # `if: always()` so it reports on every pull request whatever the matrix did
+  # -- a check that does not report cannot block, and a skipped required check
+  # is indistinguishable from an absent one. And it insists on the exact string
+  # `success`: a matrix that was cancelled, or skipped because an earlier job
+  # never ran, is not a matrix that passed, and treating anything but success
+  # as failure is what stops this job becoming the green-for-no-work check that
+  # antimatter-studios/diskjockey#197 is about.
+  ci-ok:
+    name: ci-ok
+    needs: [test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: every gating job must have concluded success
+        run: |
+          echo "test: ${{ needs.test.result }}"
+          if [ "${{ needs.test.result }}" != "success" ]; then
+              echo "::error::the test matrix concluded '${{ needs.test.result }}', not 'success' -- failure, cancellation and skipping all mean the gate did not run to completion"
+              exit 1
+          fi
+          echo "all gating jobs succeeded"

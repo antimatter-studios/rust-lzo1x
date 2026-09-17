@@ -45,10 +45,49 @@ jobs:
 
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked --release
+      - name: cargo test (default selection, with a floor)
+        shell: bash
+        run: |
+          cargo test --locked --release 2>&1 | tee "$RUNNER_TEMP/test-default.log"
+          rc=${PIPESTATUS[0]}
+          # The same floor ci.yml carries, for the same reason and with more
+          # at stake: `cargo test` exits 0 on "0 passed; 0 failed", so an empty
+          # selection is indistinguishable from a full run by exit status
+          # alone, and here a green run publishes a crate version that can
+          # never be republished. Measured 2026-09-17 on CI run 34610842299
+          # (main, fbb69d3): 28 executed -- 27 lib unit tests plus 1 doc test.
+          # Measured on CI rather than here because this workflow runs only on
+          # a version tag; it is the same crate, the same two selections and
+          # the same commands, so the count carries over and the next tag is
+          # where this floor first executes.
+          n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$RUNNER_TEMP/test-default.log" | awk '{s+=$4} END{print s+0}')
+          echo "tests executed: $n (floor 26)"
+          if [ "$n" -lt 26 ]; then
+              echo "::error::only $n tests executed, floor is 26 -- 28 ran on 2026-09-17 in run 34610842299, and a release that executes less than that stopped early rather than passed"
+              exit 1
+          fi
+          exit "$rc"
       # The oracle tests are the ones that prove this decoder reads what
       # a real encoder writes, so a release must not skip them.
-      - run: cargo test --locked --release -- --ignored
+      - name: cargo test --ignored (oracle selection, with its own floor)
+        shell: bash
+        run: |
+          cargo test --locked --release -- --ignored 2>&1 | tee "$RUNNER_TEMP/test-ignored.log"
+          rc=${PIPESTATUS[0]}
+          # Its own floor, because `--ignored` selects a set disjoint from the
+          # default run and can empty independently -- an #[ignore] removed, a
+          # test file moved, or lzop missing from the image would each leave
+          # this step selecting nothing and still exiting 0. "A release must
+          # not skip the oracle tests" is only enforceable if something counts
+          # them. Measured 2026-09-17 on CI run 34610842299: 10 executed.
+          # Floor 9, and deliberately above zero.
+          n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$RUNNER_TEMP/test-ignored.log" | awk '{s+=$4} END{print s+0}')
+          echo "ignored tests executed: $n (floor 9)"
+          if [ "$n" -lt 9 ]; then
+              echo "::error::only $n ignored tests executed, floor is 9 -- 10 ran on 2026-09-17 in run 34610842299, and a release that executes less than that stopped early rather than passed"
+              exit 1
+          fi
+          exit "$rc"
 
   publish:
     name: publish to crates.io

@@ -1,0 +1,53 @@
+# .github-guard — declarations github-guard reads (see the github-guard skill:
+# https://github.com/antimatter-studios/agent-skills/blob/main/.claude/skills/github-guard/README.md).
+# git-config format: check with `git config -f .github-guard --list`, and
+# double-quote any value containing # or ;.
+
+# Required status checks for main. A declaration beats discovery exactly.
+#
+# Discovery requires checks BY JOB NAME, which is a guess at the PR gate and
+# drifts silently: a renamed job, an added workflow, or any future check
+# reporting under the github-actions app changes what is required without
+# anyone deciding to. Pinning it costs nothing and makes the intent reviewable.
+# The audit in antimatter-studios/diskjockey#197 found exactly that drift
+# across the constellation, which is why this file exists.
+#
+# What this repo actually produces on a pull request, verified against the
+# check-suite of the latest pull_request run (suite 93756775747) and against
+# the check-runs on main's HEAD (fbb69d3), not read off the YAML:
+#
+#   test-ubuntu-latest   github-actions   success
+#   test-macos-latest    github-actions   success
+#
+# That is the whole of it. `ci.yml` sets `name: test-${{ matrix.os }}`, so the
+# legs report under a flat `test-<os>` name rather than the `test / <os>`
+# job-matrix spelling other repos in the constellation use — the names below
+# are the literal strings GitHub reported, copied, not reconstructed.
+#
+# `release.yml` also defines a job called `test`, and a `publish to crates.io`
+# job after it. Neither is declared and neither may ever be: that workflow
+# triggers only on `push: tags: ['v*']`, so on a pull request it never reports
+# at all. A required check that cannot report is not a gate, it is a permanent
+# block on merging anything, and with enforce_admins on there is no way round
+# it from the UI.
+#
+# `ci-ok` is the aggregate gate, added in the same change as this file. It is
+# `if: always()` and `needs: [test]`, and it fails unless the matrix concluded
+# exactly `success` — so failed, cancelled and skipped all come out red. It
+# exists because the two matrix legs below are a list that has to be kept in
+# step with `ci.yml` by hand: add `windows-latest` to the matrix tomorrow and
+# the new leg gates nothing, because nobody remembered to come back here. A
+# job that `needs:` the whole matrix covers every leg the matrix ever grows,
+# including ones that do not exist yet.
+#
+# The two legs are ALSO declared, deliberately, rather than being replaced by
+# `ci-ok`. An aggregate is a claim about other jobs, and the failure this sweep
+# is about is a green check that stands in for work that did not happen; if
+# `ci-ok` were ever weakened into passing on a skipped matrix, requiring it
+# alone would hand back the same fake coverage in a new shape. Requiring the
+# legs as well means the real compile-and-test work must have reported success
+# under its own name before anything merges, whatever `ci-ok` believes.
+[checks]
+	required = ci-ok
+	required = test-ubuntu-latest
+	required = test-macos-latest
