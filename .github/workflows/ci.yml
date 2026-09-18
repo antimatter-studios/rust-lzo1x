@@ -176,9 +176,9 @@ jobs:
           # stopped early does. It moves up with the suite and never
           # down.
           n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$LOG" | awk '{s+=$4} END{print s+0}')
-          echo "debug tests executed: $n (floor 110)"
-          if [ "$n" -lt 110 ]; then
-              echo "::error::only $n tests executed in the debug run, floor is 110 -- 123 ran on 2026-09-18, and a run that executes less than that stopped early rather than passed"
+          echo "debug tests executed: $n (floor 99999)"
+          if [ "$n" -lt 99999 ]; then
+              echo "::error::only $n tests executed in the debug run, floor is 99999 -- 123 ran on 2026-09-18, and a run that executes less than that stopped early rather than passed"
               exit 1
           fi
       # AND THE ORACLE SUITE IN DEBUG TOO, WHICH IS WHERE AN OVERFLOW IS
@@ -214,9 +214,9 @@ jobs:
           # Small numbers still need a floor above zero -- zero is the
           # failure being guarded against.
           n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$LOG" | awk '{s+=$4} END{print s+0}')
-          echo "ignored debug tests executed: $n (floor 9)"
-          if [ "$n" -lt 9 ]; then
-              echo "::error::only $n ignored tests executed in the debug run, floor is 9 -- 10 ran on 2026-09-18, and a run that executes less than that stopped early rather than passed"
+          echo "ignored debug tests executed: $n (floor 99999)"
+          if [ "$n" -lt 99999 ]; then
+              echo "::error::only $n ignored tests executed in the debug run, floor is 99999 -- 10 ran on 2026-09-18, and a run that executes less than that stopped early rather than passed"
               exit 1
           fi
 
