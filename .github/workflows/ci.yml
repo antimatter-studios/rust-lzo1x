@@ -90,6 +90,136 @@ jobs:
           fi
           exit "$rc"
 
+      # A DEBUG RUN BESIDE THE RELEASE ONES, NOT INSTEAD OF THEM (#13).
+      # The two steps above are the only coverage this repository has of
+      # the profile it actually ships, and `[profile.release]` does not
+      # enable overflow-checks -- deliberately, that is what ships. The
+      # consequence was that no arithmetic overflow anywhere in the codec
+      # could be observed by any test, in any job. An LZO1X decoder is a
+      # loop over lengths and back-references read out of untrusted
+      # input, and the arithmetic in that loop IS the parser: match
+      # lengths accumulated 255 at a time across a run of zero bytes,
+      # distances subtracted from an output position, literal runs added
+      # to it. A computation that wraps there is not an abstract concern,
+      # it is how a decompressor turns a malformed stream into an
+      # out-of-bounds index -- and with the checks off it wraps silently,
+      # landing either back inside the buffer (wrong output, no failure)
+      # or on a later bounds check that reports a generic error naming
+      # nothing. The suite sees a pass or a plausible error, never the
+      # panic that names the line.
+      #
+      # EXPECT_OVERFLOW_CHECKS ARMS THE ONE CHECK A TEXT SCAN CANNOT DO.
+      # This run has no `--release`, so overflow-checks are on, and the
+      # variable tells `overflow_checks::the_build_the_gate_asked_to
+      # _check_does_check` in src/lib.rs that THIS is the run that must
+      # trap one -- asking the build directly rather than inferring it
+      # from which spellings of "disabled" happen to be absent from
+      # Cargo.toml. The checks can also be switched off by a
+      # CARGO_PROFILE_TEST_OVERFLOW_CHECKS variable at step or job level
+      # or by a .cargo/config.toml, neither of which is in any file a
+      # scanner here reads; the handshake is immune to where the setting
+      # lives, because it performs an overflow and sees what happens.
+      #
+      # It is declared as an `env:` mapping rather than inline as
+      # `VAR=1 cargo test` so that it reaches the run wherever the run
+      # sits in the script, which an inline prefix does not.
+      #
+      # DO NOT PUT THE VARIABLE ON EITHER `--release` STEP. The checks
+      # are off there on purpose, so the assertion it arms would fail
+      # every green run. And do not put it on the `-- --ignored` step
+      # below either: that selection runs only `#[ignore]` tests, and the
+      # probe is an ordinary library unit test, so the variable would be
+      # set for a run that cannot execute the thing it arms.
+      #
+      # THE OUTPUT IS REDIRECTED AND NOT PIPED, and that is the guard's
+      # constraint rather than a style choice. The floor needs the output
+      # in a file, and the obvious `cargo test … | tee` hands the step
+      # `tee`'s exit status -- `tee` always succeeds, Actions runs a
+      # `run:` block as `bash -e` with no `pipefail`, and the tests could
+      # fail with the step green. That is
+      # `a_run_whose_status_is_discarded_does_not_count` in
+      # tests/ci_profile.rs, which refuses the pipe by name and would not
+      # accept a piped run as the debug run this file is required to
+      # have. A `>` redirection leaves the status on `cargo test` itself,
+      # where errexit reads it, and the `trap` puts the output back on
+      # the step's log either way -- including when errexit ends the step
+      # at the run and a plain `cat` after it would never execute. (The
+      # two steps above use `tee` + `PIPESTATUS` + `exit "$rc"`, which
+      # reads the status correctly and is left alone; it is simply not
+      # the shape that qualifies as the debug run.)
+      #
+      # Deleting this step, or dropping its variable, turns
+      # tests/ci_profile.rs red. That file is the reason the step cannot
+      # be quietly lost the way it was never added.
+      - name: cargo test (debug, overflow checks armed, with a floor)
+        env:
+          EXPECT_OVERFLOW_CHECKS: "1"
+        run: |
+          LOG="$RUNNER_TEMP/test-debug.log"
+          trap 'cat "$LOG"' EXIT
+          cargo test --locked > "$LOG" 2>&1
+          # ITS OWN FLOOR, BECAUSE THIS SELECTION IS ITS OWN SELECTION.
+          # The reasoning is the one the two steps above give -- `cargo
+          # test` exits 0 on "0 passed; 0 failed", so an empty selection
+          # and a full run report the same green and only a count tells
+          # them apart -- but the number cannot be borrowed from them.
+          # This run builds a different profile, and it runs the probe in
+          # src/lib.rs and the guard in tests/ci_profile.rs, neither of
+          # which existed when the floors above were measured.
+          # Measured 2026-09-18 on this host (aarch64, rustc 1.95.0): 123 executed
+          # -- 28 library unit tests (the 27 decoder
+          # tests plus the overflow probe), 94 in tests/ci_profile.rs and 1
+          # doc test, the oracle suite being #[ignore]d out of this
+          # selection. Floor 110, roughly a tenth below,
+          # the same margin and the same reasoning as the floors above:
+          # deleting one test does not turn the gate red, a run that
+          # stopped early does. It moves up with the suite and never
+          # down.
+          n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$LOG" | awk '{s+=$4} END{print s+0}')
+          echo "debug tests executed: $n (floor 110)"
+          if [ "$n" -lt 110 ]; then
+              echo "::error::only $n tests executed in the debug run, floor is 110 -- 123 ran on 2026-09-18, and a run that executes less than that stopped early rather than passed"
+              exit 1
+          fi
+      # AND THE ORACLE SUITE IN DEBUG TOO, WHICH IS WHERE AN OVERFLOW IS
+      # MOST LIKELY TO FIRE. The tests above are fixtures this repository
+      # wrote; these push real lzop output, and deliberately adversarial
+      # streams, through the decoder. If the arithmetic in the decode
+      # loop can be made to wrap, this is the selection that does it --
+      # so running it only in a profile that cannot see the wrap was the
+      # exact hole #13 describes.
+      #
+      # NO HANDSHAKE HERE, on purpose. `-- --ignored` selects only the
+      # `#[ignore]` tests, and the probe in src/lib.rs is not one of
+      # them, so the variable would arm an assertion this run never
+      # executes -- which is the shape of a check that passes because its
+      # fixture is missing. tests/ci_profile.rs agrees: it does not count
+      # a run narrowed by `-- --ignored` as a debug run at all. The
+      # handshake belongs on the plain run above; the overflow checks are
+      # on in this one regardless, because the profile is the same one.
+      - name: cargo test --ignored (debug oracle selection, with its own floor)
+        run: |
+          LOG="$RUNNER_TEMP/test-ignored-debug.log"
+          trap 'cat "$LOG"' EXIT
+          cargo test --locked -- --ignored > "$LOG" 2>&1
+          # A SEPARATE FLOOR AGAIN, FOR THE REASON THE RELEASE ORACLE
+          # STEP GIVES: this selection is disjoint from every other one
+          # in the file and can empty entirely on its own -- an #[ignore]
+          # dropped, the oracle tests moved to another file, or lzop
+          # missing from the image would each leave it selecting nothing,
+          # printing "0 passed", exiting 0, and reporting green having
+          # checked the decoder against no reference at all.
+          # Measured 2026-09-18 on this host (aarch64, rustc 1.95.0): 10
+          # executed, the whole lzop oracle suite. Floor 9.
+          # Small numbers still need a floor above zero -- zero is the
+          # failure being guarded against.
+          n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$LOG" | awk '{s+=$4} END{print s+0}')
+          echo "ignored debug tests executed: $n (floor 9)"
+          if [ "$n" -lt 9 ]; then
+              echo "::error::only $n ignored tests executed in the debug run, floor is 9 -- 10 ran on 2026-09-18, and a run that executes less than that stopped early rather than passed"
+              exit 1
+          fi
+
   # The aggregate gate. Branch protection names checks as strings, so a list of
   # matrix legs has to be kept in step with the matrix by hand, and the day
   # someone adds a leg the new leg gates nothing until a human remembers to go
