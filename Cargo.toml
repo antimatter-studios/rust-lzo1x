@@ -24,6 +24,26 @@ path = "src/bin/lzo1x.rs"
 [dependencies]
 
 [dev-dependencies]
+# YAML parser for tests/ci_profile.rs, which reads
+# .github/workflows/ci.yml and refuses if the debug run that lets the PR
+# gate see an arithmetic overflow has been removed or disabled. It
+# PARSES the file rather than scanning its text: quoted keys, block
+# scalars, comments and nested mappings are the grammar, not edge cases,
+# and a guard that misreads its input reports protection it is not
+# providing. Pure Rust, YAML 1.2 (so GitHub's `on:` key stays the string
+# `on` and is not folded into a boolean), MIT/Apache-2.0, and no C to
+# transpile -- unlike serde_yaml, which is deprecated and wraps
+# unsafe-libyaml. Same version as the siblings, so the copies of this
+# guard stay one answer rather than several.
+#
+# THE DESCRIPTION ABOVE STILL SAYS "no dependencies" AND STILL MEANS IT.
+# A dev-dependency is built for this crate's own test and example
+# targets and for nothing else: it is not in the dependency graph
+# `cargo add am-lzo1x` resolves, not in the published .crate's
+# [dependencies], and not linked into the staticlib a consumer takes.
+# The promise is about what a consumer has to build, and this is not
+# something a consumer builds.
+saphyr = "0.0.12"
 
 [profile.release]
 lto = true
