@@ -166,19 +166,19 @@ jobs:
           # This run builds a different profile, and it runs the probe in
           # src/lib.rs and the guard in tests/ci_profile.rs, neither of
           # which existed when the floors above were measured.
-          # Measured 2026-09-18 on this host (aarch64, rustc 1.95.0): 123 executed
-          # -- 28 library unit tests (the 27 decoder
-          # tests plus the overflow probe), 94 in tests/ci_profile.rs and 1
-          # doc test, the oracle suite being #[ignore]d out of this
-          # selection. Floor 110, roughly a tenth below,
-          # the same margin and the same reasoning as the floors above:
-          # deleting one test does not turn the gate red, a run that
-          # stopped early does. It moves up with the suite and never
-          # down.
+          # Measured 2026-09-18 on run 35293789124, the first run of the
+          # pull request that added this step: 123 executed on both legs
+          # -- 28 library unit tests (the 27 decoder tests plus the
+          # overflow probe), 94 in tests/ci_profile.rs and 1 doc test,
+          # the oracle suite being #[ignore]d out of this selection.
+          # Floor 110, roughly a tenth below, the same margin and the
+          # same reasoning as the floors above: deleting one test does
+          # not turn the gate red, a run that stopped early does. It
+          # moves up with the suite and never down.
           n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$LOG" | awk '{s+=$4} END{print s+0}')
-          echo "debug tests executed: $n (floor 99999)"
-          if [ "$n" -lt 99999 ]; then
-              echo "::error::only $n tests executed in the debug run, floor is 99999 -- 123 ran on 2026-09-18, and a run that executes less than that stopped early rather than passed"
+          echo "debug tests executed: $n (floor 110)"
+          if [ "$n" -lt 110 ]; then
+              echo "::error::only $n tests executed in the debug run, floor is 110 -- 123 ran on 2026-09-18 in run 35293789124, and a run that executes less than that stopped early rather than passed"
               exit 1
           fi
       # AND THE ORACLE SUITE IN DEBUG TOO, WHICH IS WHERE AN OVERFLOW IS
@@ -209,14 +209,14 @@ jobs:
           # missing from the image would each leave it selecting nothing,
           # printing "0 passed", exiting 0, and reporting green having
           # checked the decoder against no reference at all.
-          # Measured 2026-09-18 on this host (aarch64, rustc 1.95.0): 10
-          # executed, the whole lzop oracle suite. Floor 9.
-          # Small numbers still need a floor above zero -- zero is the
-          # failure being guarded against.
+          # Measured 2026-09-18 on run 35293789124: 10 executed on both
+          # legs, the whole lzop oracle suite. Floor 9. Small numbers
+          # still need a floor above zero -- zero is the failure being
+          # guarded against.
           n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$LOG" | awk '{s+=$4} END{print s+0}')
           echo "ignored debug tests executed: $n (floor 99999)"
           if [ "$n" -lt 99999 ]; then
-              echo "::error::only $n ignored tests executed in the debug run, floor is 99999 -- 10 ran on 2026-09-18, and a run that executes less than that stopped early rather than passed"
+              echo "::error::only $n ignored tests executed in the debug run, floor is 99999 -- 10 ran on 2026-09-18 in run 35293789124, and a run that executes less than that stopped early rather than passed"
               exit 1
           fi
 
