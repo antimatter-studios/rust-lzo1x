@@ -6,6 +6,27 @@ never does.
 
 ## [Unreleased]
 
+### Added
+
+- **The codec is fuzzed, on two tiers.** This crate decompresses bytes it
+  did not write, and reaches that input through two others — `am-fs-erofs`
+  and `am-fs-squashfs` both hand it blocks lifted straight off a mounted
+  image — so a length or distance that walks the output pointer past its
+  end is reachable from any EROFS or SquashFS image a user is asked to
+  open. `fuzz/` holds `cargo-fuzz` targets for `decompress` and for the
+  round trip; `tests/fuzz_decoders.rs` is the gate that replays and
+  mutates the same corpus deterministically on the stable toolchain,
+  38,912 cases in under five seconds. It fails on a hang as well as a
+  panic, naming the target, seed and case, and refuses a case count below
+  a floor.
+
+  The corpus is streams `lzop` produced, lifted out of its container by
+  `scripts/make-fuzz-corpus.sh`, each carrying the length `lzop` recorded
+  for it. That makes the corpus an oracle as well as fuel: this crate is
+  now checked against the reference encoder on every pull request, on
+  machines with no `lzop` installed — which is the one thing
+  `tests/oracle_lzop.rs` cannot do (#18).
+
 ## [0.2.0] — 2026-09-04
 
 Minor rather than patch: `compress` is new public API, and for a `0.x`

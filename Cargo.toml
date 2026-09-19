@@ -9,6 +9,11 @@ keywords = ["lzo", "lzo1x", "decompression", "compression", "squashfs"]
 categories = ["compression", "filesystem"]
 readme = "README.md"
 
+# The fuzz crate is its own package, on its own toolchain, and is not
+# part of this one. Without this, `cargo package` and `cargo publish`
+# try to include it and fail on the nightly-only dependency.
+exclude = ["fuzz"]
+
 [lib]
 name = "lzo1x"
 crate-type = ["staticlib", "rlib"]
