@@ -44,6 +44,19 @@ tasks:
       - cargo fmt --check
       - cargo clippy --locked --all-targets -- -D warnings
 
+  test:scripts:
+    desc: The shell tests (tests/scripts/*.sh), every one by glob
+    # By glob, so a test added later needs no edit here -- a guard that has
+    # to be registered somewhere else is a guard that gets silently skipped.
+    # CI runs the same loop in the test job.
+    cmds:
+      - |
+        set -eu
+        for t in tests/scripts/*.sh; do
+          echo "== $t"
+          bash "$t"
+        done
+
   test:
     desc: Test suite, including the lzop oracle when lzop is installed
     # CI runs `cargo test --locked --release` AND the same again with
@@ -52,6 +65,7 @@ tasks:
     cmds:
       - cargo test --locked --release
       - task: test:oracle
+      - task: test:scripts
 
   test:oracle:
     desc: The lzop oracle suite, which is skipped with a reason when lzop is absent
