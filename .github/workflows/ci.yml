@@ -42,6 +42,15 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
+      # The shell tests, by glob, so a guard added later needs no edit here.
+      # Each prints a PASS line or fails the step.
+      - name: script tests (tests/scripts/*.sh)
+        run: |
+          set -euo pipefail
+          for t in tests/scripts/*.sh; do
+            echo "== $t"
+            bash "$t"
+          done
       - name: cargo test (default selection, with a floor)
         run: |
           cargo test --locked --release 2>&1 | tee "$RUNNER_TEMP/test-default.log"
@@ -231,8 +240,8 @@ jobs:
   # is indistinguishable from an absent one. And it insists on the exact string
   # `success`: a matrix that was cancelled, or skipped because an earlier job
   # never ran, is not a matrix that passed, and treating anything but success
-  # as failure is what stops this job becoming the green-for-no-work check that
-  # antimatter-studios/diskjockey#197 is about.
+  # as failure is what stops this job becoming a green-for-no-work check, the
+  # failure a CI audit across the sibling repositories was about.
   ci-ok:
     name: ci-ok
     needs: [test]

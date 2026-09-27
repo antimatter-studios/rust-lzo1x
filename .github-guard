@@ -9,8 +9,8 @@
 # drifts silently: a renamed job, an added workflow, or any future check
 # reporting under the github-actions app changes what is required without
 # anyone deciding to. Pinning it costs nothing and makes the intent reviewable.
-# The audit in antimatter-studios/diskjockey#197 found exactly that drift
-# across the constellation, which is why this file exists.
+# A CI audit across the sibling repositories found exactly that drift,
+# which is why this file exists.
 #
 # What this repo actually produces on a pull request, verified against the
 # check-suite of the latest pull_request run (suite 93756775747) and against
