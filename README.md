@@ -131,6 +131,28 @@ cargo test -- --ignored # adds the oracle tests (requires lzop)
 
 Install `lzop` with `brew install lzop` or `apt-get install lzop`.
 
+### The tiers, quietly
+
+`chore` runs the same four selections CI does, each through
+`scripts/tier.sh`: the whole transcript goes to `tmp/logs/<tier>.log`, a pass
+prints one verdict line naming it, and a run that passed but printed more than
+its measured budget exits **65**.
+
+```sh
+chore siblings            # check out ../rust-fs-core, which owns the wrapper
+chore test                # every tier: release, release oracle, debug, debug oracle
+chore test:debug          # one tier
+chore test -- --verbose   # stream it as well; the budget still applies
+```
+
+The budgets and the executed-test floors are in `chores.yml`, measured, in a
+table at the top of it. `OUTPUT_BUDGET_FAIL_TAIL=40` brings back the tail of a
+failure for whoever is watching.
+
+`chore tools` **fails** when `lzop` is absent rather than printing a skip: the
+oracle is the only check here that is not this crate marking its own homework,
+and a skip reads exactly like a pass.
+
 ## Building
 
 ```sh
