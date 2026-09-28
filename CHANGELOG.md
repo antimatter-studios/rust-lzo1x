@@ -8,6 +8,43 @@ never does.
 
 ### Added
 
+- **Every test tier is quiet, budgeted and floored** (#20). `scripts/tier.sh`
+  runs a tier through `rust-fs-core`'s canonical `output-budget.sh` — resolved
+  from the `../rust-fs-core` sibling at run time, verified by its `--version`
+  string and never committed here — so the transcript goes to
+  `tmp/logs/<tier>.log`, a pass prints one verdict line and a run that printed
+  more than its measured budget exits 65. A green CI run printed 2,132 lines
+  across its two legs, 627 of them these four steps, two of which captured
+  their log and then `cat` it straight back on every run.
+- `chores.yml` gains the four tiers CI actually runs — release, release
+  oracle, debug, debug oracle — each with a measured budget and the floor that
+  used to live inline in `ci.yml` alone, where nobody running the suite
+  locally ever met it.
+- CI uploads `tmp/logs/` as an artifact with `if: always()`. There was no
+  `actions/upload-artifact` in this repository at all.
+- `chore siblings` checks out `../rust-fs-core` for the wrapper, which is the
+  only thing this crate reaches outside itself for; it is not a Cargo
+  dependency and `cargo build` on a bare checkout is unaffected.
+
+### Changed
+
+- **`chore tools` fails when `lzop` is absent, where `test:oracle` used to
+  print `SKIPPED` and exit 0.** A skip that a floor cannot see reads exactly
+  like a pass, and the oracle is the only check here that is not this crate
+  marking its own homework. The `#[ignore]` gate that keeps a fresh
+  `cargo test` green without `lzop` is untouched; what changed is a task
+  claiming to have run the oracle when it had not.
+- The release floor moves from 26 to 121 and the debug floor from 110 to 121.
+  Both were measured before `tests/ci_profile.rs` and `tests/fuzz_decoders.rs`
+  existed; 135 tests execute in each profile today.
+- `tests/ci_profile.rs` reads a tier wrapper as the run it wraps, so every
+  judgement it makes about a `cargo test` — whether its status reaches the
+  step, whether an `&&` list can skip it, whether it receives the overflow
+  handshake — still applies. What it can no longer read off the text, that the
+  wrapper passes the command's own status through, is proved by running it in
+  `tests/scripts/test-tier-wrapper.sh`, and `ci_profile.rs` fails if that
+  guard is ever removed.
+
 - **The codec is fuzzed, on two tiers.** This crate decompresses bytes it
   did not write, and reaches that input through two others — `am-fs-erofs`
   and `am-fs-squashfs` both hand it blocks lifted straight off a mounted

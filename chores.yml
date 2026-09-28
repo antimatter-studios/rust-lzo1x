@@ -26,6 +26,72 @@ chore_min_version: 0.6.0
 #      pick up the lzop oracle in tests/oracle_lzop.rs. See `test` below —
 #      getting that wrong would make the local gate quietly weaker than CI,
 #      which is the exact failure this file exists to prevent.
+# QUIET BY DEFAULT, --verbose ON REQUEST, AND THE BUDGET IS A NUMBER (#20).
+#
+# Every test tier runs through scripts/tier.sh, which runs it quietly: the
+# whole transcript goes to tmp/logs/<tier>.log, a pass prints ONE verdict line
+# naming that log, a failure prints one line naming the command's own status,
+# and a run that passed but printed more than its budget exits 65 -- a status
+# that can be told apart from a failing suite.
+#
+# WHY A DECOMPRESSOR CARES. This crate is what two filesystem drivers feed
+# untrusted bytes to, so its suite is run while debugging something else more
+# often than on its own account. A green CI run printed 2,132 lines across its
+# two legs, 627 of them the four test steps -- and two of those steps already
+# redirected to a file and then `cat` it straight back on every run, green or
+# red. A passing run that prints 627 lines hides the twenty that matter, and
+# every reader pays: a person scrolling, a CI log viewer, and an agent working
+# in the repository, which re-reads its whole transcript on each step and so
+# pays for one loud run many times over.
+#
+#     tier            measured (2026-09-28)    budget          headroom
+#     -------------   ---------------------    ------------    ----------
+#     release         204 lines, 11,787 B      270 / 16,000    32% / 36%
+#     release-oracle   48 lines,  1,717 B       70 /  4,000    46% / 133%
+#     debug           204 lines, 11,787 B      270 / 16,000    32% / 36%
+#     debug-oracle     47 lines,  1,646 B       70 /  4,000    49% / 143%
+#
+# Each was measured from one cold run -- `cargo clean` first -- on an aarch64
+# Linux host, so the `Compiling` lines are in the number. The two profiles run
+# the same targets and print the same shape, so they carry the same budget;
+# the release figure quoted is the debug one, its own cold run having been
+# taken before seven tests were added to tests/ci_profile.rs. The headroom is
+# for a runner that compiles a different dependency set, not for a suite to
+# grow into quietly.
+#
+# THE FLOORS WERE RE-MEASURED AND TWO OF THEM WENT UP. 135 tests execute in
+# each profile -- 28 library, 101 in tests/ci_profile.rs, 5 in
+# tests/fuzz_decoders.rs and 1 doc test -- against a release floor of 26 that
+# was measured in September 2026 when this repository had 28 tests and no
+# integration suites, and a debug floor of 110 measured before
+# tests/fuzz_decoders.rs existed. Both are now 121, a tenth below the
+# measurement, which is the margin the old floors used. The oracle floors stay
+# at 9 against 10 executed.
+#
+# RAISE A BUDGET WITH THE MEASUREMENT THAT JUSTIFIES IT, and raise it in
+# .github/workflows/ci.yml in the same breath --
+# tests/scripts/test-tier-budgets-agree.sh fails a pull request where the two
+# files disagree. A budget nobody can breach measures nothing; one lowered to
+# fit a noisy run measures less than nothing.
+#
+# THE FLOORS ARE THE OTHER HALF, and they were already here -- inline in four
+# ci.yml steps, eight lines each, and nowhere a developer would meet them. A
+# budget fails a tier that PRINTS too much; nothing fails a tier that printed
+# almost nothing because it RAN almost nothing, and `cargo test` exits 0 on
+# "0 passed; 0 failed". The numbers stayed at the call site where they belong;
+# only the counting moved, into scripts/test-floor.sh.
+#
+# THERE IS NO scripts/output-budget.sh HERE, deliberately. The wrapper is
+# rust-fs-core's. This crate has no dependencies at all, so there is nothing
+# for cargo to unpack and nothing to ask -- scripts/tier.sh resolves the
+# ../rust-fs-core sibling that `chore siblings` checks out, verifies it by its
+# `--version` string, and copies it into gitignored tmp/ for the run. A copy
+# committed here under another name is how the family came to have three
+# divergent copies reached four different ways, with nothing comparing them.
+#
+# VERBOSE IS `OUTPUT_BUDGET_VERBOSE=1`, or `chore test:debug -- --verbose`. It
+# streams the run and does NOT lift the budget. It is not `FLTH_VERBOSE` any
+# more -- that name is simply not read, and setting it fails silently.
 vars:
   TRIPLE: aarch64-apple-darwin
   LIBNAME: lzo1x
@@ -57,41 +123,101 @@ tasks:
           bash "$t"
         done
 
-  test:
-    desc: Test suite, including the lzop oracle when lzop is installed
-    # CI runs `cargo test --locked --release` AND the same again with
-    # `-- --ignored`. Running only the first here would make this task a
-    # WEAKER gate than CI while looking like the same thing.
-    cmds:
-      - cargo test --locked --release
-      - task: test:oracle
-      - task: test:scripts
-
-  test:oracle:
-    desc: The lzop oracle suite, which is skipped with a reason when lzop is absent
-    # `silent: true` because chore echoes each command's SOURCE before running
-    # it. Without it the skip message below is printed even on a run that does
-    # NOT skip — output that contradicts what actually happened, which is worse
-    # than no message at all.
-    silent: true
-    # The `#[ignore]` gate exists for a reason tests/oracle_lzop.rs states
-    # outright: a fresh checkout without lzop must still have a green
-    # `cargo test`. So this runs the oracle when lzop is present and says
-    # plainly when it is not, rather than either failing on a missing optional
-    # tool or skipping in silence. Silence is the bad option — it reads
-    # identically to "the oracle passed".
+  siblings:
+    desc: Check out ../rust-fs-core, which owns the output-budget wrapper
+    # THE ONE SIBLING, AND IT IS NOT A CARGO DEPENDENCY. Nothing in src/ or
+    # tests/ knows rust-fs-core exists and `cargo build` on a bare checkout is
+    # unaffected; what needs it is scripts/tier.sh, because
+    # scripts/output-budget.sh lives there and nowhere else. The alternative
+    # was a repo-local script meeting the same contract, and that is the
+    # option this repository did not take: written locally it would be a
+    # near-copy of core's under another name, which is exactly how the family
+    # ended up with three divergent copies.
+    #
+    # v0.2.13 is the first release whose failing tier is quiet as well; the
+    # wrapper has been packaged since v0.2.11. The ref is repeated in
+    # .github/workflows/ci.yml, which cannot call this task without installing
+    # chore on two runner platforms.
     cmds:
       - |
-        if command -v lzop >/dev/null 2>&1; then
-          cargo test --locked --release -- --ignored
+        set -eu
+        if [ -e ../rust-fs-core ]; then
+          echo "rust-fs-core: already checked out at ../rust-fs-core, left alone"
         else
-          echo "SKIPPED the lzop oracle: lzop is not installed."
-          echo "  It decodes streams from the reference compressor, which is"
-          echo "  the only check here that is not self-referential. CI installs"
-          echo "  lzop and runs it; this machine did not, so this run is weaker"
-          echo "  than the one that will gate the pull request."
-          echo "  Install it with: brew install lzop"
+          git clone --depth 1 --branch v0.2.13 \
+            https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
         fi
+
+  test:release:
+    desc: The suite in the release profile, which is the one that ships
+    cmds:
+      - 'bash scripts/tier.sh "test (release)" release 270 16000 -- cargo test --locked --release'
+      - 'bash scripts/test-floor.sh release 121'
+
+  test:release:oracle:
+    desc: The lzop oracle in the release profile
+    # THE ONLY CHECK HERE THAT IS NOT SELF-REFERENTIAL. Everything else in
+    # this repository compares this decoder against fixtures this repository
+    # wrote; these push real lzop output through it.
+    cmds:
+      - task: tools
+      - 'bash scripts/tier.sh "test (release, oracle)" release-oracle 70 4000 -- cargo test --locked --release -- --ignored'
+      - 'bash scripts/test-floor.sh release-oracle 9'
+
+  test:debug:
+    desc: The suite in the debug profile, where an overflow can be seen
+    # EXPECT_OVERFLOW_CHECKS ARMS THE PROBE in src/lib.rs that asks the build
+    # to prove it traps an overflow, rather than inferring it from which
+    # spellings of "disabled" happen to be absent from Cargo.toml. It belongs
+    # on THIS tier and no other: the release tiers have the checks off on
+    # purpose, and the oracle selections run only `#[ignore]` tests, which the
+    # probe is not.
+    cmds:
+      - 'EXPECT_OVERFLOW_CHECKS=1 bash scripts/tier.sh "test (debug)" debug 270 16000 -- cargo test --locked'
+      - 'bash scripts/test-floor.sh debug 121'
+
+  test:debug:oracle:
+    desc: The lzop oracle in the debug profile, where an overflow would fire
+    # WHERE AN OVERFLOW IS MOST LIKELY TO FIRE: real lzop output and
+    # deliberately adversarial streams, in the profile that can see a wrap. No
+    # handshake here -- this selection runs only `#[ignore]` tests and the
+    # probe is an ordinary unit test, so the variable would arm an assertion
+    # this run never executes.
+    cmds:
+      - task: tools
+      - 'bash scripts/tier.sh "test (debug, oracle)" debug-oracle 70 4000 -- cargo test --locked -- --ignored'
+      - 'bash scripts/test-floor.sh debug-oracle 9'
+
+  tools:
+    desc: Verify the oracle tool is present, and fail naming it when it is not
+    silent: true
+    # NOTHING SKIPS. This task used to be part of `test:oracle`, which printed
+    # a SKIPPED message and exited 0 when lzop was absent -- and a skip that a
+    # floor cannot see reads exactly like a pass. The oracle tests are
+    # `#[ignore]`d so that a fresh `cargo test` is green without lzop, which is
+    # right; what was wrong was a chore task claiming to have run them.
+    cmds:
+      - |
+        if ! command -v lzop >/dev/null 2>&1; then
+          echo "lzop is not installed, and the oracle tier cannot run without it." >&2
+          echo "  It is the reference LZO compressor and the only check here that is" >&2
+          echo "  not this repository marking its own homework. CI installs it and" >&2
+          echo "  runs it, so a run without it is weaker than the one that gates the" >&2
+          echo "  pull request -- which is why this fails instead of skipping." >&2
+          echo "    Debian/Ubuntu: sudo apt-get install -y lzop" >&2
+          echo "    macOS:         brew install lzop" >&2
+          exit 1
+        fi
+        echo "lzop: $(command -v lzop)"
+
+  test:
+    desc: Every test tier, exactly as CI runs them
+    cmds:
+      - task: test:release
+      - task: test:release:oracle
+      - task: test:debug
+      - task: test:debug:oracle
+      - task: test:scripts
 
   build:
     desc: Debug build

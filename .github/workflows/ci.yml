@@ -32,6 +32,18 @@ jobs:
       - name: Install lzop (macOS)
         if: runner.os == 'macOS'
         run: brew install lzop
+      # rust-fs-core is checked out for ONE FILE: scripts/output-budget.sh,
+      # which every tier below runs through and which lives there and nowhere
+      # else. It is not a cargo dependency of this crate -- nothing in src/ or
+      # tests/ knows it exists -- so this adds a clone and no compilation.
+      # `chore siblings` does the same thing for a developer; the ref is
+      # repeated here because the workflow cannot call a chore task without
+      # installing chore on two runner platforms.
+      - name: clone rust-fs-core, which owns the output-budget wrapper
+        run: |
+          git clone --depth 1 --branch v0.2.13 \
+            https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -51,183 +63,95 @@ jobs:
             echo "== $t"
             bash "$t"
           done
-      - name: cargo test (default selection, with a floor)
+      # THE FOUR TIERS, EACH QUIET AND EACH UNDER A MEASURED BUDGET (#20).
+      #
+      # These four steps printed 627 of this job's 1,095 lines, and two of
+      # them already redirected to a file and then `cat` it straight back on
+      # every run, green or red. scripts/tier.sh sends the transcript to
+      # tmp/logs/<tier>.log and prints one verdict line; the log is uploaded
+      # below, so nothing is lost, it is just not recited.
+      #
+      # THE BUDGETS AND FLOORS ARE chores.yml's, REPEATED. The workflow cannot
+      # read that file without installing chore on two runner platforms, and
+      # tests/scripts/test-tier-budgets-agree.sh fails a pull request in which
+      # the two disagree. Raise a number in both or in neither.
+      #
+      # THE COMMAND'S OWN STATUS IS STILL WHAT DECIDES THE STEP, which is the
+      # property tests/ci_profile.rs exists to protect: the wrapper redirects
+      # rather than pipes, and returns the status `cargo test` returned.
+      # That can no longer be read off this text, so it is proved by running
+      # it -- tests/scripts/test-tier-wrapper.sh drives the wrapper with a
+      # command that exits 7 and requires 7 back, and ci_profile.rs fails if
+      # that guard ever disappears.
+      - name: test (release)
+        shell: bash
         run: |
-          cargo test --locked --release 2>&1 | tee "$RUNNER_TEMP/test-default.log"
-          rc=${PIPESTATUS[0]}
-          # A FLOOR, BECAUSE THE FAILURE MODE HERE IS AN ABSENCE. `cargo test`
-          # exits 0 on "0 passed; 0 failed", so a filter that selects nothing,
-          # a build that produced no test binaries, or a suite list that came
-          # out empty all report exactly the same green as a full run. Nothing
-          # in the exit status can tell those apart -- only a count can.
-          # Measured 2026-09-17 on run 34610842299 (the CI run for fbb69d3 on
-          # main): 28 executed on both legs -- 27 lib unit tests plus 1 doc
-          # test, the oracle tests being #[ignore]d out of this selection.
-          # Floor 26, which is 28 less a small margin; it moves up with the
-          # suite and never down.
-          n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$RUNNER_TEMP/test-default.log" | awk '{s+=$4} END{print s+0}')
-          echo "tests executed: $n (floor 26)"
-          if [ "$n" -lt 26 ]; then
-              echo "::error::only $n tests executed, floor is 26 -- 28 ran on 2026-09-17 in run 34610842299, and a run that executes less than that stopped early rather than passed"
-              exit 1
-          fi
-          exit "$rc"
-      # Oracle tests are #[ignore]-gated so a fresh checkout without lzop
-      # still has a green `cargo test`. CI installed it above, so opt in.
-      - name: cargo test --ignored (oracle selection, with its own floor)
+          bash scripts/tier.sh "test (release)" release 270 16000 -- cargo test --locked --release
+          bash scripts/test-floor.sh release 121
+
+      # THE ORACLE SELECTION, which is disjoint from every other one here and
+      # can empty on its own: an `#[ignore]` dropped, the tests moved to
+      # another file, or lzop missing from the image would each leave it
+      # selecting nothing, printing "0 passed" and exiting 0. Its floor is
+      # what makes that loud.
+      - name: test (release, oracle)
+        shell: bash
         run: |
-          cargo test --locked --release -- --ignored 2>&1 | tee "$RUNNER_TEMP/test-ignored.log"
-          rc=${PIPESTATUS[0]}
-          # A SEPARATE FLOOR, BECAUSE THIS SELECTION IS DISJOINT FROM THE ONE
-          # ABOVE AND CAN EMPTY ON ITS OWN. `-- --ignored` runs only the tests
-          # marked #[ignore], and today that is the entire lzop oracle suite --
-          # the only thing in this repo that checks the decoder against a real
-          # LZO implementation rather than against fixtures we wrote ourselves.
-          # If the #[ignore] attributes were dropped, the oracle tests moved to
-          # another file, or lzop stopped being installed on the image, this
-          # step would select zero tests, print "0 passed", exit 0, and the
-          # gate would go green having verified nothing against the reference.
-          # That is silent today; the count is what makes it loud.
-          # Measured 2026-09-17 on run 34610842299: 10 executed on both legs.
-          # Floor 9. Small numbers still need a floor above zero -- zero is the
-          # failure being guarded against.
-          n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$RUNNER_TEMP/test-ignored.log" | awk '{s+=$4} END{print s+0}')
-          echo "ignored tests executed: $n (floor 9)"
-          if [ "$n" -lt 9 ]; then
-              echo "::error::only $n ignored tests executed, floor is 9 -- 10 ran on 2026-09-17 in run 34610842299, and a run that executes less than that stopped early rather than passed"
-              exit 1
-          fi
-          exit "$rc"
+          bash scripts/tier.sh "test (release, oracle)" release-oracle 70 4000 -- cargo test --locked --release -- --ignored
+          bash scripts/test-floor.sh release-oracle 9
 
       # A DEBUG RUN BESIDE THE RELEASE ONES, NOT INSTEAD OF THEM (#13).
-      # The two steps above are the only coverage this repository has of
-      # the profile it actually ships, and `[profile.release]` does not
-      # enable overflow-checks -- deliberately, that is what ships. The
-      # consequence was that no arithmetic overflow anywhere in the codec
-      # could be observed by any test, in any job. An LZO1X decoder is a
-      # loop over lengths and back-references read out of untrusted
-      # input, and the arithmetic in that loop IS the parser: match
-      # lengths accumulated 255 at a time across a run of zero bytes,
-      # distances subtracted from an output position, literal runs added
-      # to it. A computation that wraps there is not an abstract concern,
-      # it is how a decompressor turns a malformed stream into an
-      # out-of-bounds index -- and with the checks off it wraps silently,
-      # landing either back inside the buffer (wrong output, no failure)
-      # or on a later bounds check that reports a generic error naming
-      # nothing. The suite sees a pass or a plausible error, never the
-      # panic that names the line.
+      # `[profile.release]` does not enable overflow-checks -- deliberately,
+      # that is what ships -- so with only the release steps above, no
+      # arithmetic overflow anywhere in the codec could be observed by any
+      # test in any job. An LZO1X decoder is a loop over lengths and
+      # back-references read out of untrusted input, and the arithmetic in
+      # that loop IS the parser: a computation that wraps there is how a
+      # malformed stream becomes an out-of-bounds index.
       #
-      # EXPECT_OVERFLOW_CHECKS ARMS THE ONE CHECK A TEXT SCAN CANNOT DO.
-      # This run has no `--release`, so overflow-checks are on, and the
-      # variable tells `overflow_checks::the_build_the_gate_asked_to
-      # _check_does_check` in src/lib.rs that THIS is the run that must
-      # trap one -- asking the build directly rather than inferring it
-      # from which spellings of "disabled" happen to be absent from
-      # Cargo.toml. The checks can also be switched off by a
-      # CARGO_PROFILE_TEST_OVERFLOW_CHECKS variable at step or job level
-      # or by a .cargo/config.toml, neither of which is in any file a
-      # scanner here reads; the handshake is immune to where the setting
-      # lives, because it performs an overflow and sees what happens.
-      #
-      # It is declared as an `env:` mapping rather than inline as
-      # `VAR=1 cargo test` so that it reaches the run wherever the run
-      # sits in the script, which an inline prefix does not.
-      #
-      # DO NOT PUT THE VARIABLE ON EITHER `--release` STEP. The checks
-      # are off there on purpose, so the assertion it arms would fail
-      # every green run. And do not put it on the `-- --ignored` step
-      # below either: that selection runs only `#[ignore]` tests, and the
-      # probe is an ordinary library unit test, so the variable would be
-      # set for a run that cannot execute the thing it arms.
-      #
-      # THE OUTPUT IS REDIRECTED AND NOT PIPED, and that is the guard's
-      # constraint rather than a style choice. The floor needs the output
-      # in a file, and the obvious `cargo test … | tee` hands the step
-      # `tee`'s exit status -- `tee` always succeeds, Actions runs a
-      # `run:` block as `bash -e` with no `pipefail`, and the tests could
-      # fail with the step green. That is
-      # `a_run_whose_status_is_discarded_does_not_count` in
-      # tests/ci_profile.rs, which refuses the pipe by name and would not
-      # accept a piped run as the debug run this file is required to
-      # have. A `>` redirection leaves the status on `cargo test` itself,
-      # where errexit reads it, and the `trap` puts the output back on
-      # the step's log either way -- including when errexit ends the step
-      # at the run and a plain `cat` after it would never execute. (The
-      # two steps above use `tee` + `PIPESTATUS` + `exit "$rc"`, which
-      # reads the status correctly and is left alone; it is simply not
-      # the shape that qualifies as the debug run.)
+      # EXPECT_OVERFLOW_CHECKS ARMS THE ONE CHECK A TEXT SCAN CANNOT DO. It
+      # tells `overflow_checks::the_build_the_gate_asked_to_check_does_check`
+      # in src/lib.rs that THIS is the run that must trap one -- asking the
+      # build directly rather than inferring it from which spellings of
+      # "disabled" are absent from Cargo.toml. It is an `env:` mapping so it
+      # reaches the run wherever the run sits in the script, and it is on THIS
+      # step and no other: the release steps have the checks off on purpose,
+      # and the `-- --ignored` selections cannot execute the probe at all.
       #
       # Deleting this step, or dropping its variable, turns
-      # tests/ci_profile.rs red. That file is the reason the step cannot
-      # be quietly lost the way it was never added.
-      - name: cargo test (debug, overflow checks armed, with a floor)
+      # tests/ci_profile.rs red.
+      - name: test (debug, overflow checks armed)
+        shell: bash
         env:
           EXPECT_OVERFLOW_CHECKS: "1"
         run: |
-          LOG="$RUNNER_TEMP/test-debug.log"
-          trap 'cat "$LOG"' EXIT
-          cargo test --locked > "$LOG" 2>&1
-          # ITS OWN FLOOR, BECAUSE THIS SELECTION IS ITS OWN SELECTION.
-          # The reasoning is the one the two steps above give -- `cargo
-          # test` exits 0 on "0 passed; 0 failed", so an empty selection
-          # and a full run report the same green and only a count tells
-          # them apart -- but the number cannot be borrowed from them.
-          # This run builds a different profile, and it runs the probe in
-          # src/lib.rs and the guard in tests/ci_profile.rs, neither of
-          # which existed when the floors above were measured.
-          # Measured 2026-09-18 on run 35293789124, the first run of the
-          # pull request that added this step: 123 executed on both legs
-          # -- 28 library unit tests (the 27 decoder tests plus the
-          # overflow probe), 94 in tests/ci_profile.rs and 1 doc test,
-          # the oracle suite being #[ignore]d out of this selection.
-          # Floor 110, roughly a tenth below, the same margin and the
-          # same reasoning as the floors above: deleting one test does
-          # not turn the gate red, a run that stopped early does. It
-          # moves up with the suite and never down.
-          n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$LOG" | awk '{s+=$4} END{print s+0}')
-          echo "debug tests executed: $n (floor 110)"
-          if [ "$n" -lt 110 ]; then
-              echo "::error::only $n tests executed in the debug run, floor is 110 -- 123 ran on 2026-09-18 in run 35293789124, and a run that executes less than that stopped early rather than passed"
-              exit 1
-          fi
-      # AND THE ORACLE SUITE IN DEBUG TOO, WHICH IS WHERE AN OVERFLOW IS
-      # MOST LIKELY TO FIRE. The tests above are fixtures this repository
-      # wrote; these push real lzop output, and deliberately adversarial
-      # streams, through the decoder. If the arithmetic in the decode
-      # loop can be made to wrap, this is the selection that does it --
-      # so running it only in a profile that cannot see the wrap was the
-      # exact hole #13 describes.
-      #
-      # NO HANDSHAKE HERE, on purpose. `-- --ignored` selects only the
-      # `#[ignore]` tests, and the probe in src/lib.rs is not one of
-      # them, so the variable would arm an assertion this run never
-      # executes -- which is the shape of a check that passes because its
-      # fixture is missing. tests/ci_profile.rs agrees: it does not count
-      # a run narrowed by `-- --ignored` as a debug run at all. The
-      # handshake belongs on the plain run above; the overflow checks are
-      # on in this one regardless, because the profile is the same one.
-      - name: cargo test --ignored (debug oracle selection, with its own floor)
+          bash scripts/tier.sh "test (debug)" debug 270 16000 -- cargo test --locked
+          bash scripts/test-floor.sh debug 121
+
+      # AND THE ORACLE SUITE IN DEBUG TOO, WHICH IS WHERE AN OVERFLOW IS MOST
+      # LIKELY TO FIRE: real lzop output and deliberately adversarial streams,
+      # in the profile that can see a wrap. NO HANDSHAKE HERE, on purpose --
+      # this selection runs only `#[ignore]` tests and the probe is an
+      # ordinary unit test, so the variable would arm an assertion this run
+      # never executes.
+      - name: test (debug, oracle)
+        shell: bash
         run: |
-          LOG="$RUNNER_TEMP/test-ignored-debug.log"
-          trap 'cat "$LOG"' EXIT
-          cargo test --locked -- --ignored > "$LOG" 2>&1
-          # A SEPARATE FLOOR AGAIN, FOR THE REASON THE RELEASE ORACLE
-          # STEP GIVES: this selection is disjoint from every other one
-          # in the file and can empty entirely on its own -- an #[ignore]
-          # dropped, the oracle tests moved to another file, or lzop
-          # missing from the image would each leave it selecting nothing,
-          # printing "0 passed", exiting 0, and reporting green having
-          # checked the decoder against no reference at all.
-          # Measured 2026-09-18 on run 35293789124: 10 executed on both
-          # legs, the whole lzop oracle suite. Floor 9. Small numbers
-          # still need a floor above zero -- zero is the failure being
-          # guarded against.
-          n=$(grep -aoE 'test result: ok\. [0-9]+ passed' "$LOG" | awk '{s+=$4} END{print s+0}')
-          echo "ignored debug tests executed: $n (floor 9)"
-          if [ "$n" -lt 9 ]; then
-              echo "::error::only $n ignored tests executed in the debug run, floor is 9 -- 10 ran on 2026-09-18 in run 35293789124, and a run that executes less than that stopped early rather than passed"
-              exit 1
-          fi
+          bash scripts/tier.sh "test (debug, oracle)" debug-oracle 70 4000 -- cargo test --locked -- --ignored
+          bash scripts/test-floor.sh debug-oracle 9
+
+      # A quiet tier keeps everything; it just does not print it. Without this
+      # the transcript of a failing run dies with the runner, and the one-line
+      # verdict a failure prints names a log nobody can fetch. There is no
+      # upload-artifact anywhere else in this repository.
+      - name: keep the tier logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier-logs-${{ matrix.os }}
+          path: tmp/logs/
+          if-no-files-found: warn
+          retention-days: 7
 
   # The aggregate gate. Branch protection names checks as strings, so a list of
   # matrix legs has to be kept in step with the matrix by hand, and the day

@@ -838,7 +838,51 @@ fn scan_shell(line: &str) -> ShellScan {
 /// between `cargo` and its subcommand. A wrapper -- `sudo`, `xargs`, a
 /// script -- is not recognised and the command does not count, which is
 /// the strict direction.
+/// The run inside a tier wrapper, if this command is one.
+///
+/// `bash scripts/tier.sh "test (debug)" debug 120 9000 -- cargo test --locked`
+/// IS the debug run: the wrapper redirects the transcript to a file and exits
+/// with the command's own status. Everything this file decides about a run --
+/// whether its status reaches the step, whether an `&&` list can skip it,
+/// whether it receives the handshake -- is decided about the WRAPPER command,
+/// which is right: the wrapper is what the shell runs, so the separators
+/// around it are what govern it, and the environment it is given is the
+/// environment `cargo test` inherits.
+///
+/// WHAT THIS FILE CAN NO LONGER PROVE BY READING, AND WHAT PROVES IT INSTEAD.
+/// The property this guard exists for is that a run's failure is not
+/// swallowed -- `a_run_whose_status_is_discarded_does_not_count`, which
+/// refuses `cargo test | tee` by name. It could check that by looking at the
+/// text because `cargo test` was the command. It cannot look inside a shell
+/// script, so the wrapper's status-passthrough is proved by RUNNING it:
+/// tests/scripts/test-tier-wrapper.sh drives tier.sh with a command that
+/// exits 7 and requires 7 back, and with one that breaches its budget and
+/// requires 65. `the_wrapper_this_file_trusts_is_itself_under_test` below
+/// fails if that guard is ever removed, so the two cannot be separated.
+///
+/// The prefix is matched on the script's NAME, not on `bash`: `bash
+/// scripts/tier.sh`, `./scripts/tier.sh` and `scripts/tier.sh` are the same
+/// invocation, and an assignment prefix in front of any of them is left where
+/// it is, because it is the environment the whole thing runs under.
+fn unwrap_tier(words: &[String]) -> Option<&[String]> {
+    let at = words
+        .iter()
+        .position(|w| w == TIER_WRAPPER || w.ends_with("/tier.sh"))?;
+    let separator = words[at..].iter().position(|w| w == "--")? + at;
+    let inner = &words[separator + 1..];
+    (!inner.is_empty()).then_some(inner)
+}
+
+/// The wrapper every tier runs through, as ci.yml and chores.yml spell it.
+const TIER_WRAPPER: &str = "scripts/tier.sh";
+
 fn cargo_test_arguments(words: &[String]) -> Option<Vec<&str>> {
+    // A tier wrapper is transparent. Recursing rather than inlining means a
+    // wrapped run is parsed by exactly the same code as a bare one, so the
+    // two cannot come to disagree about what `--release` or `--lib` mean.
+    if let Some(inner) = unwrap_tier(words) {
+        return cargo_test_arguments(inner);
+    }
     let mut words = words
         .iter()
         .map(String::as_str)
@@ -2411,6 +2455,113 @@ fn the_profile_that_cargo_test_builds_still_checks_for_overflow() {
          debug step is costing a compile and buying nothing.",
         path.display()
     );
+}
+
+/// The tier wrapper is transparent to every judgement this file makes, and
+/// the behaviour guard that earns it that trust is still there.
+mod tier_wrapper {
+    use super::{cargo_test_arguments, manifest_dir, runs_with_overflow_checks};
+
+    fn words(line: &str) -> Vec<String> {
+        line.split_whitespace().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn a_wrapped_run_is_the_run_it_wraps() {
+        let bare_words = words("cargo test --locked --release");
+        let wrapped_words =
+            words("bash scripts/tier.sh label log 120 9000 -- cargo test --locked --release");
+        let bare = cargo_test_arguments(&bare_words).expect("a bare run is a run");
+        let wrapped = cargo_test_arguments(&wrapped_words).expect("a wrapped run is a run");
+        assert_eq!(
+            bare, wrapped,
+            "the wrapper changed what the run's arguments are read as",
+        );
+    }
+
+    #[test]
+    fn the_wrapper_is_recognised_however_it_is_spelled() {
+        for line in [
+            "bash scripts/tier.sh l log 1 2 -- cargo test --locked",
+            "./scripts/tier.sh l log 1 2 -- cargo test --locked",
+            "scripts/tier.sh l log 1 2 -- cargo test --locked",
+            "bash ./scripts/tier.sh l log 1 2 -- cargo test --locked",
+        ] {
+            let spelled = words(line);
+            assert!(
+                cargo_test_arguments(&spelled).is_some(),
+                "not recognised as a run: {line}",
+            );
+        }
+    }
+
+    #[test]
+    fn a_wrapped_run_still_has_to_have_its_status_read() {
+        // The wrapper hands the command's own status back, and that status is
+        // then thrown away by the pipe exactly as it would be without the
+        // wrapper. A wrapper that made a piped run acceptable would have
+        // turned this guard off rather than taught it something.
+        let piped = "bash scripts/tier.sh l log 1 2 -- cargo test --locked | tee out.log";
+        assert!(
+            runs_with_overflow_checks(piped).is_empty(),
+            "a wrapped run whose status is discarded still does not count",
+        );
+    }
+
+    #[test]
+    fn the_arguments_after_the_wrapper_are_the_ones_read() {
+        // `--lib` narrows the selection and disqualifies a run. It has to do
+        // that inside the wrapper as well, or a tier could quietly stop
+        // running the overflow probe.
+        let narrowed = "bash scripts/tier.sh l log 1 2 -- cargo test --locked --test oracle_lzop";
+        assert!(
+            runs_with_overflow_checks(narrowed).is_empty(),
+            "a narrowed selection inside the wrapper was counted as the debug run",
+        );
+    }
+
+    #[test]
+    fn a_wrapper_with_no_command_after_it_is_not_a_run() {
+        for line in [
+            "bash scripts/tier.sh l log 1 2 --",
+            "bash scripts/tier.sh l log 1 2",
+        ] {
+            let empty = words(line);
+            assert!(cargo_test_arguments(&empty).is_none(), "counted: {line}");
+        }
+    }
+
+    #[test]
+    fn nothing_else_taking_a_double_dash_is_unwrapped() {
+        // Only the tier wrapper is transparent. Any other program with a `--`
+        // in its arguments is a program, not a passthrough.
+        for line in [
+            "bash scripts/other.sh a -- cargo test",
+            "xargs -- cargo test --locked",
+        ] {
+            let other = words(line);
+            assert!(cargo_test_arguments(&other).is_none(), "unwrapped: {line}");
+        }
+    }
+
+    /// The status-passthrough this file now takes on trust is proved by
+    /// executing the wrapper, and this is what stops the proof being deleted
+    /// on its own.
+    #[test]
+    fn the_wrapper_this_file_trusts_is_itself_under_test() {
+        for required in ["scripts/tier.sh", "tests/scripts/test-tier-wrapper.sh"] {
+            let path = manifest_dir().join(required);
+            assert!(
+                path.exists(),
+                "{} is missing. This file stopped being able to see inside a tier run when \
+                 the runs moved behind scripts/tier.sh; what replaced the text check is a \
+                 guard that RUNS the wrapper and requires the command's own status back. \
+                 Without it, `cargo test | tee` is refused here and a wrapper that swallowed \
+                 a failure would not be.",
+                path.display(),
+            );
+        }
+    }
 }
 
 /// The shell scanner is the part of this that can rot, so it is checked
