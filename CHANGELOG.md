@@ -8,6 +8,10 @@ never does.
 
 ### Added
 
+- Releases carry a build-provenance attestation: the published `.crate` is
+  attached to the GitHub release for its tag, checked first against the
+  crates.io checksum, and verifiable with `gh attestation verify` (see the
+  README, "Verifying a release").
 - **Every test tier is quiet, budgeted and floored** (#20). `scripts/tier.sh`
   runs a tier through `rust-fs-core`'s canonical `output-budget.sh` — resolved
   from the `../rust-fs-core` sibling at run time, verified by its `--version`
