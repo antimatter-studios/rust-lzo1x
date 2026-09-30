@@ -8,6 +8,13 @@ never does.
 
 ### Added
 
+- **An agent guide, `AGENTS.md`, with `CLAUDE.md` importing it.** It carries
+  the agent-core block shared byte-identically across the sibling
+  repositories, then what is specific to this crate: the `lzop` oracle in both
+  directions, the clean-room rule, the tiers and floors, and what a newcomer
+  trips on. `scripts/agents-core-check.sh` fails on drift, and
+  `tests/scripts/test-agents-core.sh` proves it refuses a modified, unmarked,
+  mis-declared or absent block; CI runs it on both legs.
 - Releases carry a build-provenance attestation: the published `.crate` is
   attached to the GitHub release for its tag, checked first against the
   crates.io checksum, and verifiable with `gh attestation verify` (see the
