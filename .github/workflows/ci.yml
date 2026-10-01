@@ -4,8 +4,10 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  # Every pull request, whatever its base: a filter here skips a pull
+  # request stacked on another one's branch, which then reads as CLEAN
+  # with no checks at all (#26, tests/ci_triggers.rs).
   pull_request:
-    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
