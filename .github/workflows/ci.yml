@@ -12,6 +12,13 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Read-only unless a job asks for more. This repository's default token
+# is read-write, and a workflow that declares nothing inherits it, so every
+# job here would otherwise hold a write token beside actions it does not
+# pin.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: test-${{ matrix.os }}
@@ -58,6 +65,11 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       # The shell tests, by glob, so a guard added later needs no edit here.
       # Each prints a PASS line or fails the step.
+      - name: PyYAML, which the workflow guards in tests/scripts read with
+        # ubuntu-latest ships python3-yaml; macos-latest's Python does not,
+        # and a guard that cannot parse the workflows fails rather than skips.
+        if: runner.os == 'macOS'
+        run: python3 -m pip install --user --break-system-packages pyyaml
       - name: script tests (tests/scripts/*.sh)
         run: |
           set -euo pipefail
