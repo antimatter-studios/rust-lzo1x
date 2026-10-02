@@ -137,13 +137,14 @@ tasks:
     # it is built. Its lines are fixed, not per item, so 40 / 4,000 leaves
     # room for a warning block without hiding a flood.
     #
-    # THE FLOOR counts lints run, not tests: 196 measured on 2026-10-02 with
-    # cargo-semver-checks 0.50.0 (`196 checks: 196 pass, 58 skip`), floored a
-    # tenth below. A run that checked nothing -- a crate that did not build,
-    # an empty lint set -- is under it rather than green.
+    # NO FLOOR, and it is the one tier without one. cargo-semver-checks runs
+    # 196 lints while the version matches the published one, but once
+    # Cargo.toml declares a break it runs none ("0 checks: 0 pass, 254 skip"),
+    # so any floor above zero would fail the release that bumps the minor
+    # (rust-fs-ext4 met this first, #120). tests/scripts/test-tier-budgets-
+    # agree.sh exempts it by name.
     cmds:
-      - 'bash scripts/tier.sh semver semver 40 4000 -- scripts/semver-check.sh'
-      - 'bash scripts/test-floor.sh semver 176'
+      - 'bash scripts/tier.sh semver semver 40 4000 -- bash scripts/core.sh semver-check'
 
   siblings:
     desc: Check out ../rust-fs-core, which owns the output-budget wrapper
@@ -156,8 +157,9 @@ tasks:
     # near-copy of core's under another name, which is exactly how the family
     # ended up with three divergent copies.
     #
-    # v0.2.13 is the first release whose failing tier is quiet as well; the
-    # wrapper has been packaged since v0.2.11. The ref is repeated in
+    # v0.2.16 is the first release that also carries the family's floor and
+    # semver check, run through scripts/core.sh; the wrapper has been packaged
+    # since v0.2.11. The ref is repeated in
     # .github/workflows/ci.yml, which cannot call this task without installing
     # chore on two runner platforms.
     cmds:
@@ -166,7 +168,7 @@ tasks:
         if [ -e ../rust-fs-core ]; then
           echo "rust-fs-core: already checked out at ../rust-fs-core, left alone"
         else
-          git clone --depth 1 --branch v0.2.13 \
+          git clone --depth 1 --branch v0.2.16 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
         fi
 
@@ -174,7 +176,7 @@ tasks:
     desc: The suite in the release profile, which is the one that ships
     cmds:
       - 'bash scripts/tier.sh "test (release)" release 270 16000 -- cargo test --locked --release'
-      - 'bash scripts/test-floor.sh release 121'
+      - 'bash scripts/core.sh test-floor release 121'
 
   test:release:oracle:
     desc: The lzop oracle in the release profile
@@ -184,7 +186,7 @@ tasks:
     cmds:
       - task: tools
       - 'bash scripts/tier.sh "test (release, oracle)" release-oracle 70 4000 -- cargo test --locked --release -- --ignored'
-      - 'bash scripts/test-floor.sh release-oracle 9'
+      - 'bash scripts/core.sh test-floor release-oracle 9'
 
   test:debug:
     desc: The suite in the debug profile, where an overflow can be seen
@@ -196,7 +198,7 @@ tasks:
     # probe is not.
     cmds:
       - 'EXPECT_OVERFLOW_CHECKS=1 bash scripts/tier.sh "test (debug)" debug 270 16000 -- cargo test --locked'
-      - 'bash scripts/test-floor.sh debug 121'
+      - 'bash scripts/core.sh test-floor debug 121'
 
   test:debug:oracle:
     desc: The lzop oracle in the debug profile, where an overflow would fire
@@ -208,7 +210,7 @@ tasks:
     cmds:
       - task: tools
       - 'bash scripts/tier.sh "test (debug, oracle)" debug-oracle 70 4000 -- cargo test --locked -- --ignored'
-      - 'bash scripts/test-floor.sh debug-oracle 9'
+      - 'bash scripts/core.sh test-floor debug-oracle 9'
 
   tools:
     desc: Verify the oracle tool is present, and fail naming it when it is not

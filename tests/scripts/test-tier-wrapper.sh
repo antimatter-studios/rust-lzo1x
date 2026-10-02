@@ -23,9 +23,6 @@
 #      quieter and more confusing failure
 #   9. no wrapper anywhere fails, naming rust-fs-core and `chore siblings`
 #  10. the private copy of the wrapper is removed when the tier ends
-#  11. test-floor.sh refuses a tier that ran fewer tests than its floor,
-#      refuses a tier that did not run at all, names a tier that ran none,
-#      and counts a semver run's lints as its executed checks
 #
 # It accumulates failures rather than stopping at the first: a guard that
 # stops early answers one question per run, and these checks are independent.
@@ -58,7 +55,7 @@ SANDBOX="$(mktemp -d "$REPO/tmp/tier-wrapper.XXXXXX")"
 trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM
 
 mkdir -p "$SANDBOX/repo/scripts" "$SANDBOX/rust-fs-core/scripts" "$SANDBOX/wrong/scripts"
-cp "$REPO/scripts/tier.sh" "$REPO/scripts/test-floor.sh" "$SANDBOX/repo/scripts/"
+cp "$REPO/scripts/tier.sh" "$SANDBOX/repo/scripts/"
 cp "$WRAPPER" "$SANDBOX/rust-fs-core/scripts/output-budget.sh"
 # A copy that exists and is not it. `--version` is the whole contract, so
 # answering something else is the only way to be wrong that matters.
@@ -76,7 +73,6 @@ FAKE
 chmod +x "$SANDBOX/repo/fake-suite.sh"
 
 TIER="$SANDBOX/repo/scripts/tier.sh"
-FLOOR="$SANDBOX/repo/scripts/test-floor.sh"
 SUITE="$SANDBOX/repo/fake-suite.sh"
 run() {  # run TIER-ARGS...; captures stdout+stderr in $out and status in $rc
     out="$(cd "$SANDBOX/repo" && "$@" 2>&1)"; rc=$?
@@ -151,48 +147,6 @@ copies="$(find "$SANDBOX/repo/tmp" -maxdepth 1 -name 'output-budget.*.sh' | wc -
     && ok "the run's private copy of the wrapper is removed afterwards" \
     || fail "$copies copies of the wrapper were left in tmp/"
 
-# --- 11. the floor ---------------------------------------------------------
-run bash "$FLOOR" debug 12
-[ "$rc" -eq 0 ] && grep -q 'debug: 12 tests executed (floor 12)' <<<"$out" \
-    && ok "a tier that met its floor passes" \
-    || fail "the floor rejected a tier that met it: status $rc:"$'\n'"$out"
-run bash "$FLOOR" debug 13
-[ "$rc" -ne 0 ] && grep -q 'floor is 13' <<<"$out" \
-    && ok "a tier one test short of its floor fails" \
-    || fail "the floor accepted 12 tests against a floor of 13: status $rc"
-run bash "$FLOOR" never-ran 1
-[ "$rc" -ne 0 ] && grep -q 'did not run' <<<"$out" \
-    && ok "a tier with no log at all fails rather than counting zero" \
-    || fail "a missing log gave status $rc:"$'\n'"$out"
-# A log with no `test result:` line at all -- a build that produced no test
-# binary -- is the case the floor exists for, and it must SAY so. grep finding
-# nothing exits 1, and under `set -euo pipefail` that used to end the script
-# silently at the assignment: still status 1, but with no message and no
-# ::error:: annotation naming the tier (#29).
-run bash "$TIER" "test (empty)" empty 50 4000 -- bash -c 'echo "compiled; no test binary"'
-run bash "$FLOOR" empty 1
-[ "$rc" -ne 0 ] && grep -q 'only 0 tests executed in the empty tier, floor is 1' <<<"$out" \
-    && ok "a tier whose log holds no result line fails, and says it ran 0" \
-    || fail "a log with no result line gave status $rc and no verdict:"$'\n'"$out"
-
-# The semver tier runs lints, not tests, and its count is cargo-semver-checks'
-# `N checks:` -- so a semver run counts towards its floor like a test run does.
-run bash "$TIER" semver semver 50 4000 -- bash -c 'echo "     Checked [   0.013s] 196 checks: 196 pass, 58 skip"'
-run bash "$FLOOR" semver 196
-[ "$rc" -eq 0 ] && grep -q 'semver: 196 tests executed (floor 196)' <<<"$out" \
-    && ok "a semver run's lints count towards its floor" \
-    || fail "the floor did not count a semver run's 196 checks: status $rc:"$'\n'"$out"
-run bash "$FLOOR" semver 197
-[ "$rc" -ne 0 ] && ok "a semver run one lint short of its floor fails" \
-    || fail "the floor accepted 196 checks against a floor of 197"
-# CI sets CARGO_TERM_COLOR=always, and cargo-semver-checks honours it, so
-# the line it counts arrives wrapped in escapes: measured, 0 lints counted
-# against a floor of 176 on the first CI run of this tier.
-run bash "$TIER" semver semver 50 4000 -- bash -c 'printf "\033[1m\033[32m     Checked\033[0m [   0.043s] 196 checks: 196 pass, 58 skip\n"'
-run bash "$FLOOR" semver 196
-[ "$rc" -eq 0 ] && ok "a coloured semver run's lints count too" \
-    || fail "the floor did not count a coloured semver line: status $rc:"$'\n'"$out"
-
 # --- usage -----------------------------------------------------------------
 run bash "$TIER" only three args
 [ "$rc" -eq 2 ] && ok "too few arguments is a usage error (2)" \
@@ -202,4 +156,4 @@ if [ "$fails" -gt 0 ]; then
     echo "FAIL  $fails check(s) failed in $(basename "${BASH_SOURCE[0]}")" >&2
     exit 1
 fi
-echo "PASS  scripts/tier.sh and scripts/test-floor.sh keep their contract"
+echo "PASS  scripts/tier.sh keeps its contract (the floor is rust-fs-core's, tested there)"
