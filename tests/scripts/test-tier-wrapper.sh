@@ -185,6 +185,13 @@ run bash "$FLOOR" semver 196
 run bash "$FLOOR" semver 197
 [ "$rc" -ne 0 ] && ok "a semver run one lint short of its floor fails" \
     || fail "the floor accepted 196 checks against a floor of 197"
+# CI sets CARGO_TERM_COLOR=always, and cargo-semver-checks honours it, so
+# the line it counts arrives wrapped in escapes: measured, 0 lints counted
+# against a floor of 176 on the first CI run of this tier.
+run bash "$TIER" semver semver 50 4000 -- bash -c 'printf "\033[1m\033[32m     Checked\033[0m [   0.043s] 196 checks: 196 pass, 58 skip\n"'
+run bash "$FLOOR" semver 196
+[ "$rc" -eq 0 ] && ok "a coloured semver run's lints count too" \
+    || fail "the floor did not count a coloured semver line: status $rc:"$'\n'"$out"
 
 # --- usage -----------------------------------------------------------------
 run bash "$TIER" only three args

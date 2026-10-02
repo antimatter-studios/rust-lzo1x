@@ -50,7 +50,9 @@ ran="$({ grep -aoE 'test result: ok\. [0-9]+ passed' "$LOG" || true; } | awk '{ 
 # `Checked [ 0.013s] 196 checks: 196 pass, 58 skip`. Those are counted the
 # same way, so a run that checked nothing -- a crate that did not build, a
 # lint set that came back empty -- falls under its floor rather than passing.
-checks="$({ grep -aoE 'Checked \[ *[0-9.]+s\] [0-9]+ checks:' "$LOG" || true; } | awk '{ sum += $(NF-1) } END { print sum + 0 }')"
+# The escapes are stripped first: CI sets CARGO_TERM_COLOR=always, and
+# cargo-semver-checks colours `Checked` under it.
+checks="$(awk '{ gsub(/\033\[[0-9;]*m/, ""); print }' "$LOG" | { grep -aoE 'Checked \[ *[0-9.]+s\] [0-9]+ checks:' || true; } | awk '{ sum += $(NF-1) } END { print sum + 0 }')"
 ran=$(( ran + checks ))
 if [ "$ran" -lt "$FLOOR" ]; then
     echo "::error::only $ran tests executed in the $TIER tier, floor is $FLOOR -- a run that executes fewer than that stopped early rather than passed"
