@@ -24,7 +24,8 @@
 #   9. no wrapper anywhere fails, naming rust-fs-core and `chore siblings`
 #  10. the private copy of the wrapper is removed when the tier ends
 #  11. test-floor.sh refuses a tier that ran fewer tests than its floor,
-#      refuses a tier that did not run at all, and names a tier that ran none
+#      refuses a tier that did not run at all, names a tier that ran none,
+#      and counts a semver run's lints as its executed checks
 #
 # It accumulates failures rather than stopping at the first: a guard that
 # stops early answers one question per run, and these checks are independent.
@@ -173,6 +174,24 @@ run bash "$FLOOR" empty 1
 [ "$rc" -ne 0 ] && grep -q 'only 0 tests executed in the empty tier, floor is 1' <<<"$out" \
     && ok "a tier whose log holds no result line fails, and says it ran 0" \
     || fail "a log with no result line gave status $rc and no verdict:"$'\n'"$out"
+
+# The semver tier runs lints, not tests, and its count is cargo-semver-checks'
+# `N checks:` -- so a semver run counts towards its floor like a test run does.
+run bash "$TIER" semver semver 50 4000 -- bash -c 'echo "     Checked [   0.013s] 196 checks: 196 pass, 58 skip"'
+run bash "$FLOOR" semver 196
+[ "$rc" -eq 0 ] && grep -q 'semver: 196 tests executed (floor 196)' <<<"$out" \
+    && ok "a semver run's lints count towards its floor" \
+    || fail "the floor did not count a semver run's 196 checks: status $rc:"$'\n'"$out"
+run bash "$FLOOR" semver 197
+[ "$rc" -ne 0 ] && ok "a semver run one lint short of its floor fails" \
+    || fail "the floor accepted 196 checks against a floor of 197"
+# CI sets CARGO_TERM_COLOR=always, and cargo-semver-checks honours it, so
+# the line it counts arrives wrapped in escapes: measured, 0 lints counted
+# against a floor of 176 on the first CI run of this tier.
+run bash "$TIER" semver semver 50 4000 -- bash -c 'printf "\033[1m\033[32m     Checked\033[0m [   0.043s] 196 checks: 196 pass, 58 skip\n"'
+run bash "$FLOOR" semver 196
+[ "$rc" -eq 0 ] && ok "a coloured semver run's lints count too" \
+    || fail "the floor did not count a coloured semver line: status $rc:"$'\n'"$out"
 
 # --- usage -----------------------------------------------------------------
 run bash "$TIER" only three args
