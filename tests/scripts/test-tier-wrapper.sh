@@ -23,8 +23,8 @@
 #      quieter and more confusing failure
 #   9. no wrapper anywhere fails, naming rust-fs-core and `chore siblings`
 #  10. the private copy of the wrapper is removed when the tier ends
-#  11. test-floor.sh refuses a tier that ran fewer tests than its floor, and
-#      refuses a tier that did not run at all
+#  11. test-floor.sh refuses a tier that ran fewer tests than its floor,
+#      refuses a tier that did not run at all, and names a tier that ran none
 #
 # It accumulates failures rather than stopping at the first: a guard that
 # stops early answers one question per run, and these checks are independent.
@@ -163,6 +163,16 @@ run bash "$FLOOR" never-ran 1
 [ "$rc" -ne 0 ] && grep -q 'did not run' <<<"$out" \
     && ok "a tier with no log at all fails rather than counting zero" \
     || fail "a missing log gave status $rc:"$'\n'"$out"
+# A log with no `test result:` line at all -- a build that produced no test
+# binary -- is the case the floor exists for, and it must SAY so. grep finding
+# nothing exits 1, and under `set -euo pipefail` that used to end the script
+# silently at the assignment: still status 1, but with no message and no
+# ::error:: annotation naming the tier (#29).
+run bash "$TIER" "test (empty)" empty 50 4000 -- bash -c 'echo "compiled; no test binary"'
+run bash "$FLOOR" empty 1
+[ "$rc" -ne 0 ] && grep -q 'only 0 tests executed in the empty tier, floor is 1' <<<"$out" \
+    && ok "a tier whose log holds no result line fails, and says it ran 0" \
+    || fail "a log with no result line gave status $rc and no verdict:"$'\n'"$out"
 
 # --- usage -----------------------------------------------------------------
 run bash "$TIER" only three args
