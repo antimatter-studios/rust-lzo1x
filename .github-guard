@@ -31,23 +31,22 @@
 # block on merging anything, and with enforce_admins on there is no way round
 # it from the UI.
 #
-# `ci-ok` is the aggregate gate, added in the same change as this file. It is
-# `if: always()` and `needs: [test]`, and it fails unless the matrix concluded
-# exactly `success` — so failed, cancelled and skipped all come out red. It
-# exists because the two matrix legs below are a list that has to be kept in
-# step with `ci.yml` by hand: add `windows-latest` to the matrix tomorrow and
-# the new leg gates nothing, because nobody remembered to come back here. A
-# job that `needs:` the whole matrix covers every leg the matrix ever grows,
-# including ones that do not exist yet.
+# `ci-ok` is the aggregate gate, and the ONE required check. It is
+# `if: always()`, it `needs:` every other job in `ci.yml`, and it fails
+# unless every one of them concluded exactly `success` -- so failed,
+# cancelled and skipped all come out red. A job that `needs:` the whole
+# matrix covers every leg the matrix ever grows, including ones that do not
+# exist yet.
 #
-# The two legs are ALSO declared, deliberately, rather than being replaced by
-# `ci-ok`. An aggregate is a claim about other jobs, and the failure this sweep
-# is about is a green check that stands in for work that did not happen; if
-# `ci-ok` were ever weakened into passing on a skipped matrix, requiring it
-# alone would hand back the same fake coverage in a new shape. Requiring the
-# legs as well means the real compile-and-test work must have reported success
-# under its own name before anything merges, whatever `ci-ok` believes.
+# The two `test-<os>` legs used to be declared here as well, on the argument
+# that an aggregate weakened into passing a skipped matrix would hand back
+# fake coverage. They cost more than they guarded. Renaming the `test` job,
+# or changing a matrix value, left two required checks that never report
+# again, which GitHub reads as permanently pending: with enforce_admins on,
+# nothing merges and there is nothing red to point at. And the aggregate's
+# shape is now checked rather than trusted: rust-fs-core's ci-gate, run as
+# `bash scripts/core.sh ci-gate` in every `test` leg and in `chore lint`,
+# fails if `ci-ok` loses `if: always()`, misses a job in `needs:`, or if this
+# file names anything but `ci-ok`.
 [checks]
 	required = ci-ok
-	required = test-ubuntu-latest
-	required = test-macos-latest
