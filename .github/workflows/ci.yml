@@ -50,7 +50,7 @@ jobs:
       # installing chore on two runner platforms.
       - name: clone rust-fs-core, which owns the output-budget wrapper
         run: |
-          git clone --depth 1 --branch v0.2.13 \
+          git clone --depth 1 --branch v0.2.16 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
 
       - name: Cache cargo registry
@@ -77,6 +77,12 @@ jobs:
             echo "== $t"
             bash "$t"
           done
+      # The family scripts are rust-fs-core's alone: this fails if a copy of
+      # one is committed here, scripts/core.sh differs from core's, or
+      # anything here still calls a local copy.
+      - name: no copy of a rust-fs-core family script
+        shell: bash
+        run: bash scripts/core.sh family-check
       # THE FOUR TIERS, EACH QUIET AND EACH UNDER A MEASURED BUDGET (#20).
       #
       # These four steps printed 627 of this job's 1,095 lines, and two of
@@ -101,7 +107,7 @@ jobs:
         shell: bash
         run: |
           bash scripts/tier.sh "test (release)" release 270 16000 -- cargo test --locked --release
-          bash scripts/test-floor.sh release 121
+          bash scripts/core.sh test-floor release 121
 
       # THE ORACLE SELECTION, which is disjoint from every other one here and
       # can empty on its own: an `#[ignore]` dropped, the tests moved to
@@ -112,7 +118,7 @@ jobs:
         shell: bash
         run: |
           bash scripts/tier.sh "test (release, oracle)" release-oracle 70 4000 -- cargo test --locked --release -- --ignored
-          bash scripts/test-floor.sh release-oracle 9
+          bash scripts/core.sh test-floor release-oracle 9
 
       # A DEBUG RUN BESIDE THE RELEASE ONES, NOT INSTEAD OF THEM (#13).
       # `[profile.release]` does not enable overflow-checks -- deliberately,
@@ -140,7 +146,7 @@ jobs:
           EXPECT_OVERFLOW_CHECKS: "1"
         run: |
           bash scripts/tier.sh "test (debug)" debug 270 16000 -- cargo test --locked
-          bash scripts/test-floor.sh debug 121
+          bash scripts/core.sh test-floor debug 121
 
       # AND THE ORACLE SUITE IN DEBUG TOO, WHICH IS WHERE AN OVERFLOW IS MOST
       # LIKELY TO FIRE: real lzop output and deliberately adversarial streams,
@@ -152,7 +158,7 @@ jobs:
         shell: bash
         run: |
           bash scripts/tier.sh "test (debug, oracle)" debug-oracle 70 4000 -- cargo test --locked -- --ignored
-          bash scripts/test-floor.sh debug-oracle 9
+          bash scripts/core.sh test-floor debug-oracle 9
 
       # A quiet tier keeps everything; it just does not print it. Without this
       # the transcript of a failing run dies with the runner, and the one-line
@@ -200,7 +206,7 @@ jobs:
       # rust-fs-core for scripts/output-budget.sh only, as in the test job.
       - name: clone rust-fs-core, which owns the output-budget wrapper
         run: |
-          git clone --depth 1 --branch v0.2.13 \
+          git clone --depth 1 --branch v0.2.16 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -209,9 +215,7 @@ jobs:
           tool: cargo-semver-checks@${{ env.CARGO_SEMVER_CHECKS_VERSION }}
       - name: semver (quiet, budgeted)
         shell: bash
-        run: |
-          bash scripts/tier.sh semver semver 40 4000 -- scripts/semver-check.sh
-          bash scripts/test-floor.sh semver 176
+        run: bash scripts/tier.sh semver semver 40 4000 -- bash scripts/core.sh semver-check
 
   ci-ok:
     name: ci-ok

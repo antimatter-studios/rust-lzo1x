@@ -32,7 +32,7 @@ import re, sys
 TIER = re.compile(
     r'tier\.sh\s+(?P<label>"[^"]*"|\'[^\']*\'|\S+)'
     r'\s+(?P<log>\S+)\s+(?P<lines>\d+)\s+(?P<bytes>\d+)\s+--')
-FLOOR = re.compile(r'test-floor\.sh\s+(?P<log>\S+)\s+(?P<floor>\d+)')
+FLOOR = re.compile(r'core\.sh\s+test-floor\s+(?:--refuse-ignored\s+)?(?P<log>\S+)\s+(?P<floor>\d+)')
 
 def read(path):
     text = open(path, encoding="utf-8").read()
@@ -67,9 +67,12 @@ for log in sorted(set(ct) | set(wt)):
         problems.append(
             f"tier '{log}' disagrees: {chores} has {ct[log]}, {ci} has {wt[log]}")
 
+# The semver tier is the one exemption: cargo-semver-checks runs no lints
+# once the version declares a break, so no floor above zero can hold for it.
+UNFLOORED = {"semver"}
 for name, tiers, floors in ((chores, ct, cf), (ci, wt, wf)):
     for log in sorted(tiers):
-        if log not in floors:
+        if log not in floors and log not in UNFLOORED:
             problems.append(f"tier '{log}' has a budget and no floor in {name}")
 for log in sorted(set(cf) & set(wf)):
     if cf[log] != wf[log]:
@@ -90,13 +93,13 @@ trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM
 
 cat > "$SANDBOX/chores" <<'EOF'
 - 'bash scripts/tier.sh "test (debug)" debug 90 6000 -- cargo test'
-- 'bash scripts/test-floor.sh debug 40'
+- 'bash scripts/core.sh test-floor debug 40'
 - 'bash scripts/tier.sh "test (release)" release 90 6000 -- cargo test --release'
-- 'bash scripts/test-floor.sh release 40'
+- 'bash scripts/core.sh test-floor release 40'
 EOF
 cat > "$SANDBOX/ci" <<'EOF'
 bash scripts/tier.sh "test (debug)" debug 900 6000 -- cargo test
-bash scripts/test-floor.sh debug 40
+bash scripts/core.sh test-floor debug 40
 bash scripts/tier.sh "test (oracle)" oracle 90 6000 -- cargo test --test oracle
 EOF
 seen="$(compare "$SANDBOX/chores" "$SANDBOX/ci")"
@@ -105,7 +108,7 @@ for want in "tier 'debug' disagrees" "tier 'release' runs in" "and no floor"; do
         && ok "the comparison reports: $want" \
         || fail "the comparison missed '$want'; it said:"$'\n'"$seen"
 done
-printf 'bash scripts/tier.sh "t" t 1 2 -- true\nbash scripts/test-floor.sh t 3\n' \
+printf 'bash scripts/tier.sh "t" t 1 2 -- true\nbash scripts/core.sh test-floor t 3\n' \
     > "$SANDBOX/same"
 compare "$SANDBOX/same" "$SANDBOX/same" >/dev/null \
     && ok "two files that agree are accepted" \
