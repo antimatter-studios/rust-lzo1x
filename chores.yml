@@ -124,6 +124,27 @@ tasks:
           bash "$t"
         done
 
+  check:semver:
+    desc: Refuse a public-API break the version in Cargo.toml does not declare
+    # Against the newest version on crates.io, with cargo-semver-checks: a
+    # break needs the 0.x minor to move, an addition the patch. Why, and what
+    # it cannot see, is at the top of the script. No `sources:` on purpose --
+    # the baseline is the registry, which moves without this tree changing,
+    # so a fingerprint would call a stale answer up to date.
+    #
+    # THE BUDGET is rust-fs-ext4's measurement of the same script: 11 lines /
+    # 489 bytes passing with the baseline's rustdoc cached, one line more when
+    # it is built. Its lines are fixed, not per item, so 40 / 4,000 leaves
+    # room for a warning block without hiding a flood.
+    #
+    # THE FLOOR counts lints run, not tests: 196 measured on 2026-10-02 with
+    # cargo-semver-checks 0.50.0 (`196 checks: 196 pass, 58 skip`), floored a
+    # tenth below. A run that checked nothing -- a crate that did not build,
+    # an empty lint set -- is under it rather than green.
+    cmds:
+      - 'bash scripts/tier.sh semver semver 40 4000 -- scripts/semver-check.sh'
+      - 'bash scripts/test-floor.sh semver 176'
+
   siblings:
     desc: Check out ../rust-fs-core, which owns the output-budget wrapper
     # THE ONE SIBLING, AND IT IS NOT A CARGO DEPENDENCY. Nothing in src/ or
