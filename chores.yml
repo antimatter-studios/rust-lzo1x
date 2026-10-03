@@ -108,6 +108,7 @@ tasks:
     # differ, this is the copy that is wrong.
     cmds:
       - scripts/agents-core-check.sh
+      - bash scripts/core.sh ci-gate
       - cargo fmt --check
       - cargo clippy --locked --all-targets -- -D warnings
 
@@ -157,9 +158,9 @@ tasks:
     # near-copy of core's under another name, which is exactly how the family
     # ended up with three divergent copies.
     #
-    # v0.2.16 is the first release that also carries the family's floor and
-    # semver check, run through scripts/core.sh; the wrapper has been packaged
-    # since v0.2.11. The ref is repeated in
+    # v0.2.18 is the first release that also serves ci-gate, after the floor
+    # and semver check (v0.2.16), all run through scripts/core.sh; the
+    # wrapper has been packaged since v0.2.11. The ref is repeated in
     # .github/workflows/ci.yml, which cannot call this task without installing
     # chore on two runner platforms.
     cmds:
@@ -168,7 +169,7 @@ tasks:
         if [ -e ../rust-fs-core ]; then
           echo "rust-fs-core: already checked out at ../rust-fs-core, left alone"
         else
-          git clone --depth 1 --branch v0.2.16 \
+          git clone --depth 1 --branch v0.2.18 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
         fi
 

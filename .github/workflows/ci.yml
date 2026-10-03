@@ -50,7 +50,7 @@ jobs:
       # installing chore on two runner platforms.
       - name: clone rust-fs-core, which owns the output-budget wrapper
         run: |
-          git clone --depth 1 --branch v0.2.16 \
+          git clone --depth 1 --branch v0.2.18 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
 
       - name: Cache cargo registry
@@ -83,6 +83,13 @@ jobs:
       - name: no copy of a rust-fs-core family script
         shell: bash
         run: bash scripts/core.sh family-check
+      # .github-guard requires ci-ok and nothing else, and ci-ok needs every
+      # job below: rust-fs-core's ci-gate holds both halves, so a job added
+      # without ci-ok, or a check named by hand again, fails here. Every leg
+      # runs it; PyYAML is installed above on macOS.
+      - name: the one required check stands for every job
+        shell: bash
+        run: bash scripts/core.sh ci-gate
       # THE FOUR TIERS, EACH QUIET AND EACH UNDER A MEASURED BUDGET (#20).
       #
       # These four steps printed 627 of this job's 1,095 lines, and two of
@@ -206,7 +213,7 @@ jobs:
       # rust-fs-core for scripts/output-budget.sh only, as in the test job.
       - name: clone rust-fs-core, which owns the output-budget wrapper
         run: |
-          git clone --depth 1 --branch v0.2.16 \
+          git clone --depth 1 --branch v0.2.18 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -223,11 +230,19 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      # EVERY job in `needs`, read from `needs` itself. This step once named
+      # `test` alone while `needs` also held `semver`, so a public-API break
+      # failed its own job and ci-ok still went green. Reading the whole
+      # context means a job added to `needs` is judged without editing this.
       - name: every gating job must have concluded success
+        env:
+          NEEDS: ${{ toJSON(needs) }}
         run: |
-          echo "test: ${{ needs.test.result }}"
-          if [ "${{ needs.test.result }}" != "success" ]; then
-              echo "::error::the test matrix concluded '${{ needs.test.result }}', not 'success' -- failure, cancellation and skipping all mean the gate did not run to completion"
+          set -euo pipefail
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          bad="$(echo "$NEEDS" | jq -r '[to_entries[] | select(.value.result != "success") | .key] | join(", ")')"
+          if [ -n "$bad" ]; then
+              echo "::error::not 'success': $bad -- failure, cancellation and skipping all mean the gate did not run to completion"
               exit 1
           fi
           echo "all gating jobs succeeded"
