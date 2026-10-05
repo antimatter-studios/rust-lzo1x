@@ -39,3 +39,18 @@ fn the_release_runs_the_tool_packaging_job() {
         "release.yml does not call rust-fs-core's release-cli workflow, so no tarball is attached"
     );
 }
+
+/// The packaging script refuses a tarball without the caveats it prints
+/// after `brew install`, and it found that out at the v0.3.0 tag, after
+/// the crate had published: the release job is the only place it runs.
+/// So the file is required here, on every pull request.
+#[test]
+fn the_tarball_has_the_caveats_the_packaging_requires() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("packaging/CAVEATS");
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(
+        !text.trim().is_empty(),
+        "{} is missing or empty, and package-cli refuses to package without it",
+        path.display()
+    );
+}
