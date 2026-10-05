@@ -6,6 +6,15 @@ never does.
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-10-05
+
+### Fixed
+
+- **The release attaches the tool's tarballs.** 0.3.0 published the crate
+  and then failed to package the tool on both platforms, for a missing
+  `packaging/CAVEATS`; a test now requires the file on every pull request
+  (#43).
+
 ## [0.3.0] — 2026-10-05
 
 ### Added
@@ -224,7 +233,8 @@ consumers are unaffected.
   stream. SquashFS has no write path at all, and btrfs writes uncompressed
   extents.
 
-[Unreleased]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.1.1...v0.1.2
