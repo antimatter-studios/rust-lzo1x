@@ -13,12 +13,21 @@ let packed = lzo1x::compress(&data);
 let data = lzo1x::decompress(&packed, max_output_len)?;
 ```
 
-There is also a CLI, for working with raw blocks by hand:
+There is also a command-line tool, `lzo1x`, for working with raw blocks by
+hand:
 
 ```sh
 lzo1x compress   input.bin  block.lzo1x
 lzo1x decompress block.lzo1x output.bin 4096   # size is not in the stream
 ```
+
+Install it with `brew install antimatter-studios/tap/rust-lzo1x`, or download
+the tarball attached to each GitHub release (an install prefix: `bin/`, man
+pages and shell completions). It is one multi-call binary, `rust-lzo1x`, linked
+as `lzo1x`; `rust-lzo1x lzo1x ...` is the same program under the name nothing
+else on `PATH` can shadow. Building it needs the `cli` feature
+(`cargo build --release --features cli`), which is also the only thing that
+gives this crate dependencies: the library has none.
 
 Raw blocks, deliberately — no container, no framing. That is what a Btrfs
 extent or a SquashFS block holds. The reference CLI speaks only its own
@@ -31,7 +40,7 @@ between them.
 |---|---|
 | Variants decoded | LZO1X-1, LZO1X-1-15, LZO1X-999 (one shared grammar) |
 | Encoder output | LZO1X, using two of the four match buckets (see below) |
-| Dependencies | none |
+| Dependencies | none (the command-line tool, behind the `cli` feature, uses clap and the family's shared CLI plumbing) |
 | `unsafe` | none (`#![forbid(unsafe_code)]`) |
 | Untrusted input | safe — bounds-checked at every step, errors instead of panicking |
 | MSRV | 1.94.1 (see `rust-toolchain.toml`) |

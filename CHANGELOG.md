@@ -8,6 +8,16 @@ never does.
 
 ### Added
 
+- **The `lzo1x` tool is tested, packaged and released (#38).** It is now one
+  multi-call binary, `rust-lzo1x`, linked as `lzo1x`, built with the `cli`
+  feature on the family's shared CLI plumbing: `--version`, `--help` with
+  examples, structured errors, man pages and completions. Each release
+  attaches a tarball packaged and attested by rust-fs-core's release-cli
+  workflow. `tests/cli.rs` runs the binary as a user would: round trips from
+  0 bytes to 1 MiB, and every wrong command line, file and stream refused
+  with a reason and no panic. The default build no longer produces a binary;
+  the library still has no dependencies.
+
 - **An agent guide, `AGENTS.md`, with `CLAUDE.md` importing it.** It carries
   the agent-core block shared byte-identically across the sibling
   repositories, then what is specific to this crate: the `lzop` oracle in both

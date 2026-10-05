@@ -22,11 +22,28 @@ crate-type = ["staticlib", "rlib"]
 # the reference tool is a shell one-liner rather than a harness that has
 # to link this crate. No dependencies: the crate has none and this does
 # not introduce the first.
+# The command-line tool: one multi-call binary, installed as rust-lzo1x and
+# linked as lzo1x. Built only with the `cli` feature, so the library a
+# consumer links keeps its promise of no dependencies.
 [[bin]]
-name = "lzo1x"
-path = "src/bin/lzo1x.rs"
+name = "rust-lzo1x"
+path = "src/cli/main.rs"
+required-features = ["cli"]
+
+[package.metadata.package-cli]
+names = { "lzo1x" = 1 }
+licenses = ["LICENSE"]
+
+[features]
+# The tool and nothing else. The plumbing every tool in the family shares
+# -- dispatch, --version, doctor, the output contract, man pages and
+# completions -- is am-fs-core's `cli` feature. clap is MIT/Apache-2.0.
+cli = ["dep:clap", "dep:am-fs-core", "am-fs-core/cli"]
 
 [dependencies]
+# Both optional, behind `cli`: the library has no dependencies.
+am-fs-core = { path = "../rust-fs-core", version = "0.2.23", optional = true }
+clap = { version = "4.5", optional = true, default-features = false, features = ["std", "help", "usage", "error-context", "suggestions"] }
 
 [dev-dependencies]
 # YAML parser for tests/ci_profile.rs, which reads
