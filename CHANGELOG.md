@@ -6,6 +6,8 @@ never does.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-05
+
 ### Added
 
 - **`.lzo` files, read and written the way gzip handles `.gz` (#39).**
