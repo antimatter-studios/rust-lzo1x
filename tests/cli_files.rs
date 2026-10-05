@@ -15,11 +15,28 @@ use std::process::{Command, Output, Stdio};
 
 const BIN: Option<&str> = option_env!("CARGO_BIN_EXE_rust-lzo1x");
 
+/// The binary under test: `LZO1X_BIN` when it is set, which is how CI and
+/// a developer run this suite against an installed copy (#45), and
+/// otherwise the one cargo just built. A path that is not a file fails;
+/// it never falls back.
+fn bin() -> String {
+    if let Ok(path) = std::env::var("LZO1X_BIN") {
+        assert!(
+            std::path::Path::new(&path).is_file(),
+            "LZO1X_BIN={path} is not a file"
+        );
+        return path;
+    }
+    BIN.expect(
+        "the rust-lzo1x binary is built only with `--features cli`; run cargo test with it, \
+         or set LZO1X_BIN to an installed lzo1x",
+    )
+    .to_string()
+}
+
 fn lzo1x() -> Command {
     use std::os::unix::process::CommandExt;
-    let mut cmd = Command::new(BIN.expect(
-        "the rust-lzo1x binary is built only with `--features cli`; run cargo test with it",
-    ));
+    let mut cmd = Command::new(bin());
     cmd.arg0("lzo1x");
     cmd
 }

@@ -50,6 +50,12 @@ chore_min_version: 0.6.0
 #     release-oracle   71 lines,  2,586 B      105 /  4,000    48% / 55%
 #     debug           254 lines, 14,378 B      340 / 20,000    34% / 39%
 #     debug-oracle     71 lines,  2,586 B      105 /  4,000    48% / 55%
+#     installed        30 lines,  1,292 B       40 /  2,500    25% / 48%
+#
+# installed (#45) was measured warm on macOS, against the unpacked release
+# tarball: CI compiles its test binaries in a step before the tier, so no
+# `Compiling` line reaches its log. Its floor is the 11 tests the three CLI
+# suites hold, the lzop oracle ones included.
 #
 # Raised on 2026-10-05 (#38) from 270 / 16,000 and 70 / 4,000, measured in CI
 # run 37320119187 on ubuntu-latest: the `cli` feature adds clap and am-fs-core to
@@ -197,6 +203,16 @@ tasks:
       - task: tools
       - 'bash scripts/tier.sh "test (release, oracle)" release-oracle 105 4000 -- cargo test --locked --features cli --release -- --ignored'
       - 'bash scripts/core.sh test-floor release-oracle 9'
+
+  test:installed:
+    desc: The CLI suites against the packaged tool, as a user installs it
+    # LZO1X_BIN names the binary; CI points it at bin/lzo1x unpacked from the
+    # release tarball (#45). Locally: LZO1X_BIN="$(brew --prefix)/bin/lzo1x".
+    cmds:
+      - 'test -n "${LZO1X_BIN:-}" || { echo "test:installed: set LZO1X_BIN to the lzo1x to test" >&2; exit 1; }'
+      - task: tools
+      - 'bash scripts/tier.sh "test (installed)" installed 40 2500 -- cargo test --locked --features cli --release --test cli --test cli_files --test oracle_lzop_files -- --include-ignored'
+      - 'bash scripts/core.sh test-floor installed 11'
 
   test:debug:
     desc: The suite in the debug profile, where an overflow can be seen
