@@ -113,7 +113,7 @@ jobs:
       - name: test (release)
         shell: bash
         run: |
-          bash scripts/tier.sh "test (release)" release 270 16000 -- cargo test --locked --features cli --release
+          bash scripts/tier.sh "test (release)" release 340 20000 -- cargo test --locked --features cli --release
           bash scripts/core.sh test-floor release 121
 
       # THE ORACLE SELECTION, which is disjoint from every other one here and
@@ -124,7 +124,7 @@ jobs:
       - name: test (release, oracle)
         shell: bash
         run: |
-          bash scripts/tier.sh "test (release, oracle)" release-oracle 70 4000 -- cargo test --locked --features cli --release -- --ignored
+          bash scripts/tier.sh "test (release, oracle)" release-oracle 105 4000 -- cargo test --locked --features cli --release -- --ignored
           bash scripts/core.sh test-floor release-oracle 9
 
       # A DEBUG RUN BESIDE THE RELEASE ONES, NOT INSTEAD OF THEM (#13).
@@ -152,7 +152,7 @@ jobs:
         env:
           EXPECT_OVERFLOW_CHECKS: "1"
         run: |
-          bash scripts/tier.sh "test (debug)" debug 270 16000 -- cargo test --locked --features cli
+          bash scripts/tier.sh "test (debug)" debug 340 20000 -- cargo test --locked --features cli
           bash scripts/core.sh test-floor debug 121
 
       # AND THE ORACLE SUITE IN DEBUG TOO, WHICH IS WHERE AN OVERFLOW IS MOST
@@ -164,7 +164,7 @@ jobs:
       - name: test (debug, oracle)
         shell: bash
         run: |
-          bash scripts/tier.sh "test (debug, oracle)" debug-oracle 70 4000 -- cargo test --locked --features cli -- --ignored
+          bash scripts/tier.sh "test (debug, oracle)" debug-oracle 105 4000 -- cargo test --locked --features cli -- --ignored
           bash scripts/core.sh test-floor debug-oracle 9
 
       # A quiet tier keeps everything; it just does not print it. Without this

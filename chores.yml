@@ -44,12 +44,19 @@ chore_min_version: 0.6.0
 # in the repository, which re-reads its whole transcript on each step and so
 # pays for one loud run many times over.
 #
-#     tier            measured (2026-09-28)    budget          headroom
+#     tier            measured (2026-10-05)    budget          headroom
 #     -------------   ---------------------    ------------    ----------
-#     release         204 lines, 11,787 B      270 / 16,000    32% / 36%
-#     release-oracle   48 lines,  1,717 B       70 /  4,000    46% / 133%
-#     debug           204 lines, 11,787 B      270 / 16,000    32% / 36%
-#     debug-oracle     47 lines,  1,646 B       70 /  4,000    49% / 143%
+#     release         254 lines, 14,378 B      340 / 20,000    34% / 39%
+#     release-oracle   71 lines,  2,586 B      105 /  4,000    48% / 55%
+#     debug           254 lines, 14,378 B      340 / 20,000    34% / 39%
+#     debug-oracle     71 lines,  2,586 B      105 /  4,000    48% / 55%
+#
+# Raised on 2026-10-05 (#38) from 270 / 16,000 and 70 / 4,000, measured in CI
+# run 37320119187 on ubuntu-latest: the `cli` feature adds clap and am-fs-core to
+# the `Compiling` lines and three test binaries (cli, release_cli,
+# release_attestation's growth) to the per-binary result lines. The debug
+# tiers did not run in that run (the matrix stopped on the oracle tier's
+# budget); they print the same shape as release and carry its figures.
 #
 # Each was measured from one cold run -- `cargo clean` first -- on an aarch64
 # Linux host, so the `Compiling` lines are in the number. The two profiles run
@@ -178,7 +185,7 @@ tasks:
   test:release:
     desc: The suite in the release profile, which is the one that ships
     cmds:
-      - 'bash scripts/tier.sh "test (release)" release 270 16000 -- cargo test --locked --features cli --release'
+      - 'bash scripts/tier.sh "test (release)" release 340 20000 -- cargo test --locked --features cli --release'
       - 'bash scripts/core.sh test-floor release 121'
 
   test:release:oracle:
@@ -188,7 +195,7 @@ tasks:
     # wrote; these push real lzop output through it.
     cmds:
       - task: tools
-      - 'bash scripts/tier.sh "test (release, oracle)" release-oracle 70 4000 -- cargo test --locked --features cli --release -- --ignored'
+      - 'bash scripts/tier.sh "test (release, oracle)" release-oracle 105 4000 -- cargo test --locked --features cli --release -- --ignored'
       - 'bash scripts/core.sh test-floor release-oracle 9'
 
   test:debug:
@@ -200,7 +207,7 @@ tasks:
     # purpose, and the oracle selections run only `#[ignore]` tests, which the
     # probe is not.
     cmds:
-      - 'EXPECT_OVERFLOW_CHECKS=1 bash scripts/tier.sh "test (debug)" debug 270 16000 -- cargo test --locked --features cli'
+      - 'EXPECT_OVERFLOW_CHECKS=1 bash scripts/tier.sh "test (debug)" debug 340 20000 -- cargo test --locked --features cli'
       - 'bash scripts/core.sh test-floor debug 121'
 
   test:debug:oracle:
@@ -212,7 +219,7 @@ tasks:
     # this run never executes.
     cmds:
       - task: tools
-      - 'bash scripts/tier.sh "test (debug, oracle)" debug-oracle 70 4000 -- cargo test --locked --features cli -- --ignored'
+      - 'bash scripts/tier.sh "test (debug, oracle)" debug-oracle 105 4000 -- cargo test --locked --features cli -- --ignored'
       - 'bash scripts/core.sh test-floor debug-oracle 9'
 
   tools:
