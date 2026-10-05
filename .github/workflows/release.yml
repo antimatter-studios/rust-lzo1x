@@ -12,6 +12,11 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # The rust-fs-core tag the `cli` feature's am-fs-core requirement names,
+  # cloned as its path sibling by every job that runs cargo, and passed to
+  # the release-cli call below as core-ref. tests/release_attestation.rs
+  # holds the three to one value.
+  FS_CORE_REF: v0.2.23
 
 jobs:
   test:
@@ -46,12 +51,20 @@ jobs:
           fi
           echo "tag and Cargo.toml agree on $version"
 
+      # rust-fs-core is the `cli` feature's optional path dependency, and
+      # cargo resolves a path dependency for every command whether or not
+      # the feature is on, so it is checked out before cargo runs.
+      - name: clone rust-fs-core, the cli feature's path dependency
+        run: |
+          git clone --depth 1 --branch "$FS_CORE_REF" \
+            https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
+
       - run: cargo fmt --check
-      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo clippy --locked --all-targets --features cli -- -D warnings
       - name: cargo test (default selection, with a floor)
         shell: bash
         run: |
-          cargo test --locked --release 2>&1 | tee "$RUNNER_TEMP/test-default.log"
+          cargo test --locked --features cli --release 2>&1 | tee "$RUNNER_TEMP/test-default.log"
           rc=${PIPESTATUS[0]}
           # The same floor ci.yml carries, for the same reason and with more
           # at stake: `cargo test` exits 0 on "0 passed; 0 failed", so an empty
@@ -75,7 +88,7 @@ jobs:
       - name: cargo test --ignored (oracle selection, with its own floor)
         shell: bash
         run: |
-          cargo test --locked --release -- --ignored 2>&1 | tee "$RUNNER_TEMP/test-ignored.log"
+          cargo test --locked --features cli --release -- --ignored 2>&1 | tee "$RUNNER_TEMP/test-ignored.log"
           rc=${PIPESTATUS[0]}
           # Its own floor, because `--ignored` selects a set disjoint from the
           # default run and can empty independently -- an #[ignore] removed, a
@@ -143,9 +156,20 @@ jobs:
       # whose attestation did not can still finish the job. The same
       # packaging `cargo publish` does, and cargo's archive is
       # reproducible: the file `cargo publish` uploads is this one.
+      # rust-fs-core is the `cli` feature's optional path dependency, and
+      # cargo resolves a path dependency for every command whether or not
+      # the feature is on, so it is checked out before cargo runs.
+      - name: clone rust-fs-core, the cli feature's path dependency
+        run: |
+          git clone --depth 1 --branch "$FS_CORE_REF" \
+            https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
+
+      # No `--locked` here or on the publish: packaging rewrites the
+      # optional am-fs-core path dependency into its registry equivalent in
+      # the packaged lockfile, which `--locked` forbids.
       - name: package the crate
         shell: bash
-        run: cargo package --locked --no-verify
+        run: cargo package --no-verify
 
       - uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe # v1.0.4
         if: steps.already.outputs.published == 'false'
@@ -155,7 +179,7 @@ jobs:
         if: steps.already.outputs.published == 'false'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish --locked
+        run: cargo publish
 
       # Nothing is attested on trust: the file is compared with the
       # checksum crates.io records for this version, so the attestation
@@ -200,3 +224,21 @@ jobs:
               --notes "See CHANGELOG.md. The .crate attached here is the file published to crates.io for this version, with a build-provenance attestation from this repository's release workflow."
           fi
           gh release upload "$GITHUB_REF_NAME" target/package/*.crate --clobber
+
+  # THE COMMAND-LINE TOOL, AS A DOWNLOADABLE PREFIX. The tool rides the
+  # library's release, at the same version: one tag, one CHANGELOG. Packaged,
+  # attested and attached by rust-fs-core's release-cli workflow, the family's
+  # one copy of those jobs, from what Cargo.toml declares under
+  # [package.metadata.package-cli]. Pinned by commit SHA with the tag beside
+  # it; core-ref repeats it because `with:` cannot read anything else.
+  cli:
+    name: the tool
+    needs: [test, publish]
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: antimatter-studios/rust-fs-core/.github/workflows/release-cli.yml@0f7714910080f5f2a080ed6032cccf19bc338064 # v0.2.23
+    with:
+      core-ref: v0.2.23
+      toolchain: 1.95.0

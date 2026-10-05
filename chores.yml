@@ -110,7 +110,7 @@ tasks:
       - scripts/agents-core-check.sh
       - bash scripts/core.sh ci-gate
       - cargo fmt --check
-      - cargo clippy --locked --all-targets -- -D warnings
+      - cargo clippy --locked --all-targets --features cli -- -D warnings
 
   test:scripts:
     desc: The shell tests (tests/scripts/*.sh), every one by glob
@@ -149,16 +149,18 @@ tasks:
 
   siblings:
     desc: Check out ../rust-fs-core, which owns the output-budget wrapper
-    # THE ONE SIBLING, AND IT IS NOT A CARGO DEPENDENCY. Nothing in src/ or
-    # tests/ knows rust-fs-core exists and `cargo build` on a bare checkout is
-    # unaffected; what needs it is scripts/tier.sh, because
-    # scripts/output-budget.sh lives there and nowhere else. The alternative
+    # THE ONE SIBLING. The library does not depend on it; the `cli` feature
+    # does, as an optional path dependency that cargo resolves for every
+    # command, so a bare checkout needs it to build at all. scripts/tier.sh
+    # needs it too, because scripts/output-budget.sh lives there and nowhere
+    # else. The alternative
     # was a repo-local script meeting the same contract, and that is the
     # option this repository did not take: written locally it would be a
     # near-copy of core's under another name, which is exactly how the family
     # ended up with three divergent copies.
     #
-    # v0.2.18 is the first release that also serves ci-gate, after the floor
+    # v0.2.23 is the release the `cli` feature's am-fs-core requirement
+    # names. v0.2.18 was the first release that also serves ci-gate, after the floor
     # and semver check (v0.2.16), all run through scripts/core.sh; the
     # wrapper has been packaged since v0.2.11. The ref is repeated in
     # .github/workflows/ci.yml, which cannot call this task without installing
@@ -169,14 +171,14 @@ tasks:
         if [ -e ../rust-fs-core ]; then
           echo "rust-fs-core: already checked out at ../rust-fs-core, left alone"
         else
-          git clone --depth 1 --branch v0.2.18 \
+          git clone --depth 1 --branch v0.2.23 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
         fi
 
   test:release:
     desc: The suite in the release profile, which is the one that ships
     cmds:
-      - 'bash scripts/tier.sh "test (release)" release 270 16000 -- cargo test --locked --release'
+      - 'bash scripts/tier.sh "test (release)" release 270 16000 -- cargo test --locked --features cli --release'
       - 'bash scripts/core.sh test-floor release 121'
 
   test:release:oracle:
@@ -186,7 +188,7 @@ tasks:
     # wrote; these push real lzop output through it.
     cmds:
       - task: tools
-      - 'bash scripts/tier.sh "test (release, oracle)" release-oracle 70 4000 -- cargo test --locked --release -- --ignored'
+      - 'bash scripts/tier.sh "test (release, oracle)" release-oracle 70 4000 -- cargo test --locked --features cli --release -- --ignored'
       - 'bash scripts/core.sh test-floor release-oracle 9'
 
   test:debug:
@@ -198,7 +200,7 @@ tasks:
     # purpose, and the oracle selections run only `#[ignore]` tests, which the
     # probe is not.
     cmds:
-      - 'EXPECT_OVERFLOW_CHECKS=1 bash scripts/tier.sh "test (debug)" debug 270 16000 -- cargo test --locked'
+      - 'EXPECT_OVERFLOW_CHECKS=1 bash scripts/tier.sh "test (debug)" debug 270 16000 -- cargo test --locked --features cli'
       - 'bash scripts/core.sh test-floor debug 121'
 
   test:debug:oracle:
@@ -210,7 +212,7 @@ tasks:
     # this run never executes.
     cmds:
       - task: tools
-      - 'bash scripts/tier.sh "test (debug, oracle)" debug-oracle 70 4000 -- cargo test --locked -- --ignored'
+      - 'bash scripts/tier.sh "test (debug, oracle)" debug-oracle 70 4000 -- cargo test --locked --features cli -- --ignored'
       - 'bash scripts/core.sh test-floor debug-oracle 9'
 
   tools:

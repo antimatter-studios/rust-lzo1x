@@ -41,16 +41,16 @@ jobs:
       - name: Install lzop (macOS)
         if: runner.os == 'macOS'
         run: brew install lzop
-      # rust-fs-core is checked out for ONE FILE: scripts/output-budget.sh,
+      # rust-fs-core is checked out for two things: scripts/output-budget.sh,
       # which every tier below runs through and which lives there and nowhere
-      # else. It is not a cargo dependency of this crate -- nothing in src/ or
-      # tests/ knows it exists -- so this adds a clone and no compilation.
-      # `chore siblings` does the same thing for a developer; the ref is
-      # repeated here because the workflow cannot call a chore task without
-      # installing chore on two runner platforms.
-      - name: clone rust-fs-core, which owns the output-budget wrapper
+      # else, and the `cli` feature's command-line plumbing, an optional path
+      # dependency cargo resolves for every command. The library itself does
+      # not depend on it. `chore siblings` does the same thing for a
+      # developer; the ref is repeated here because the workflow cannot call
+      # a chore task without installing chore on two runner platforms.
+      - name: clone rust-fs-core, which owns the output-budget wrapper and the CLI plumbing
         run: |
-          git clone --depth 1 --branch v0.2.18 \
+          git clone --depth 1 --branch v0.2.23 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
 
       - name: Cache cargo registry
@@ -62,7 +62,7 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo fmt --check
-      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo clippy --locked --all-targets --features cli -- -D warnings
       # The shell tests, by glob, so a guard added later needs no edit here.
       # Each prints a PASS line or fails the step.
       - name: PyYAML, which the workflow guards in tests/scripts read with
@@ -113,7 +113,7 @@ jobs:
       - name: test (release)
         shell: bash
         run: |
-          bash scripts/tier.sh "test (release)" release 270 16000 -- cargo test --locked --release
+          bash scripts/tier.sh "test (release)" release 270 16000 -- cargo test --locked --features cli --release
           bash scripts/core.sh test-floor release 121
 
       # THE ORACLE SELECTION, which is disjoint from every other one here and
@@ -124,7 +124,7 @@ jobs:
       - name: test (release, oracle)
         shell: bash
         run: |
-          bash scripts/tier.sh "test (release, oracle)" release-oracle 70 4000 -- cargo test --locked --release -- --ignored
+          bash scripts/tier.sh "test (release, oracle)" release-oracle 70 4000 -- cargo test --locked --features cli --release -- --ignored
           bash scripts/core.sh test-floor release-oracle 9
 
       # A DEBUG RUN BESIDE THE RELEASE ONES, NOT INSTEAD OF THEM (#13).
@@ -152,7 +152,7 @@ jobs:
         env:
           EXPECT_OVERFLOW_CHECKS: "1"
         run: |
-          bash scripts/tier.sh "test (debug)" debug 270 16000 -- cargo test --locked
+          bash scripts/tier.sh "test (debug)" debug 270 16000 -- cargo test --locked --features cli
           bash scripts/core.sh test-floor debug 121
 
       # AND THE ORACLE SUITE IN DEBUG TOO, WHICH IS WHERE AN OVERFLOW IS MOST
@@ -164,7 +164,7 @@ jobs:
       - name: test (debug, oracle)
         shell: bash
         run: |
-          bash scripts/tier.sh "test (debug, oracle)" debug-oracle 70 4000 -- cargo test --locked -- --ignored
+          bash scripts/tier.sh "test (debug, oracle)" debug-oracle 70 4000 -- cargo test --locked --features cli -- --ignored
           bash scripts/core.sh test-floor debug-oracle 9
 
       # A quiet tier keeps everything; it just does not print it. Without this
@@ -213,7 +213,7 @@ jobs:
       # rust-fs-core for scripts/output-budget.sh only, as in the test job.
       - name: clone rust-fs-core, which owns the output-budget wrapper
         run: |
-          git clone --depth 1 --branch v0.2.18 \
+          git clone --depth 1 --branch v0.2.23 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
