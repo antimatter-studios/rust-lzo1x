@@ -71,12 +71,13 @@ fn roundtrip(dir: &Path, bytes: &[u8], name: &str) {
     let packed = dir.join(format!("{name}.lzo1x"));
     let back = dir.join(format!("{name}.back"));
     std::fs::write(&raw, bytes).unwrap();
-    ok(lzo1x().arg("compress").arg(&raw).arg(&packed));
+    ok(lzo1x().arg("--raw").arg("-o").arg(&packed).arg(&raw));
     ok(lzo1x()
-        .arg("decompress")
-        .arg(&packed)
+        .args(["--raw", "-d", "--size"])
+        .arg(bytes.len().to_string())
+        .arg("-o")
         .arg(&back)
-        .arg(bytes.len().to_string()));
+        .arg(&packed));
     assert!(
         std::fs::read(&back).unwrap() == bytes,
         "{name}: {} bytes compressed and decompressed by the tool came back different",
@@ -142,28 +143,40 @@ fn every_wrong_input_is_refused_with_a_reason() {
     let out = dir.join("out");
     let bytes = payload(10_000, 9);
     std::fs::write(&raw, &bytes).unwrap();
-    ok(lzo1x().arg("compress").arg(&raw).arg(&packed));
+    ok(lzo1x().arg("--raw").arg("-o").arg(&packed).arg(&raw));
 
     // The command line.
-    refused(&mut lzo1x(), 2, "usage");
-    refused(lzo1x().arg("squash"), 2, "squash");
+    refused(lzo1x().arg("--squash"), 2, "squash");
     refused(
-        lzo1x().arg("decompress").arg(&packed).arg(&out).arg("lots"),
+        lzo1x()
+            .args(["--raw", "-d", "--size", "lots", "-o"])
+            .arg(&out)
+            .arg(&packed),
         2,
         "lots",
+    );
+    refused(
+        lzo1x().args(["--raw", "-d", "-o"]).arg(&out).arg(&packed),
+        2,
+        "size",
     );
 
     // The files.
     refused(
-        lzo1x().arg("compress").arg(dir.join("absent")).arg(&out),
+        lzo1x()
+            .arg("--raw")
+            .arg("-o")
+            .arg(&out)
+            .arg(dir.join("absent")),
         1,
         "absent",
     );
     refused(
         lzo1x()
-            .arg("compress")
-            .arg(&raw)
-            .arg(dir.join("no/such/dir/out")),
+            .arg("--raw")
+            .arg("-o")
+            .arg(dir.join("no/such/dir/out"))
+            .arg(&raw),
         1,
         "no/such/dir",
     );
@@ -172,10 +185,11 @@ fn every_wrong_input_is_refused_with_a_reason() {
     // cut short, are each refused rather than half-written.
     refused(
         lzo1x()
-            .arg("decompress")
-            .arg(&packed)
+            .args(["--raw", "-d", "--size"])
+            .arg((bytes.len() - 1).to_string())
+            .arg("-o")
             .arg(&out)
-            .arg((bytes.len() - 1).to_string()),
+            .arg(&packed),
         1,
         "in.lzo1x",
     );
@@ -184,10 +198,11 @@ fn every_wrong_input_is_refused_with_a_reason() {
     std::fs::write(&cut, &packed_bytes[..packed_bytes.len() / 2]).unwrap();
     refused(
         lzo1x()
-            .arg("decompress")
-            .arg(&cut)
+            .args(["--raw", "-d", "--size"])
+            .arg(bytes.len().to_string())
+            .arg("-o")
             .arg(&out)
-            .arg(bytes.len().to_string()),
+            .arg(&cut),
         1,
         "cut.lzo1x",
     );

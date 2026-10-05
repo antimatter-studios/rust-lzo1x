@@ -8,6 +8,24 @@ never does.
 
 ### Added
 
+- **`.lzo` files, read and written the way gzip handles `.gz` (#39).**
+  `lzo1x FILE` makes `FILE.lzo` and removes `FILE`; `-d` gives it back with
+  its mode and modification time; `-k`, `-c`, `-f`, `-o`, `-t`, `-l` and
+  standard input to standard output behave as they do in gzip. The container
+  is `lzo1x::lzop`: streamed in 256 KiB blocks, every header and block checksum
+  (Adler-32 or CRC-32) checked, a damaged or truncated file refused by name
+  and never left half-written. `lzop` reads what it writes and it reads what
+  `lzop` writes (`tests/oracle_lzop_files.rs`).
+
+### Changed
+
+- **Raw blocks are `--raw`.** `lzo1x compress IN OUT` is now
+  `lzo1x --raw -o OUT IN`, and `lzo1x decompress IN OUT SIZE` is
+  `lzo1x --raw -d --size SIZE -o OUT IN`; the tool's plain form is the `.lzo`
+  file.
+
+### Added
+
 - **The `lzo1x` tool is tested, packaged and released (#38).** It is now one
   multi-call binary, `rust-lzo1x`, linked as `lzo1x`, built with the `cli`
   feature on the family's shared CLI plumbing: `--version`, `--help` with

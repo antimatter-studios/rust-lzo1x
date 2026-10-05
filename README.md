@@ -13,13 +13,24 @@ let packed = lzo1x::compress(&data);
 let data = lzo1x::decompress(&packed, max_output_len)?;
 ```
 
-There is also a command-line tool, `lzo1x`, for working with raw blocks by
-hand:
+There is also a command-line tool, `lzo1x`, which handles `.lzo` files the way
+`gzip` handles `.gz` files, and raw blocks by hand:
 
 ```sh
-lzo1x compress   input.bin  block.lzo1x
-lzo1x decompress block.lzo1x output.bin 4096   # size is not in the stream
+lzo1x notes.txt                      # makes notes.txt.lzo, removes notes.txt
+lzo1x -d notes.txt.lzo               # notes.txt back, with its mode and time
+lzo1x -k -c big.bin > big.bin.lzo    # -k keeps the input, -c writes to stdout
+tar cf - dir | lzo1x > dir.tar.lzo   # standard input to standard output
+lzo1x -t dir.tar.lzo                 # check every checksum and block
+lzo1x -l dir.tar.lzo                 # the name and sizes
+lzo1x --raw -o block.lzo1x input.bin
+lzo1x --raw -d --size 4096 -o output.bin block.lzo1x   # a raw block's size is not in it
 ```
+
+The `.lzo` files are the ones `lzop` reads and writes: `lzop` tests and
+decompresses what `lzo1x` writes, and `lzo1x` reads what `lzop` writes at any
+level and with either checksum (`tests/oracle_lzop_files.rs`). The container was
+implemented from files `lzop` wrote, measured byte by byte, not from its code.
 
 Install it with `brew install antimatter-studios/tap/rust-lzo1x`, or download
 the tarball attached to each GitHub release (an install prefix: `bin/`, man
@@ -29,10 +40,9 @@ else on `PATH` can shadow. Building it needs the `cli` feature
 (`cargo build --release --features cli`), which is also the only thing that
 gives this crate dependencies: the library has none.
 
-Raw blocks, deliberately — no container, no framing. That is what a Btrfs
-extent or a SquashFS block holds. The reference CLI speaks only its own
-container format, so the two are not interchangeable; the test suite translates
-between them.
+`--raw` is a raw block: no container, no framing. That is what a Btrfs extent or
+a SquashFS block holds, and what the library's `compress` and `decompress` take
+and return.
 
 ## Scope
 
