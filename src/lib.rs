@@ -94,6 +94,7 @@
 use std::fmt;
 
 mod compress;
+pub mod lzop;
 pub use compress::compress;
 
 /// The single failure mode of the decoder: the input is not a
