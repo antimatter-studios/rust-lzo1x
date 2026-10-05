@@ -224,9 +224,69 @@ jobs:
         shell: bash
         run: bash scripts/tier.sh semver semver 40 4000 -- bash scripts/core.sh semver-check
 
+  # THE TOOL AS A USER GETS IT (#45). The CLI suites otherwise run the
+  # binary cargo just built; here the release tarball is built with the
+  # same rust-fs-core package-cli script release.yml's release-cli call
+  # runs, unpacked into a prefix, and all three suites -- the lzop oracle
+  # tests included -- run against bin/lzo1x there through LZO1X_BIN. A
+  # tarball whose symlinks, names or binary are wrong fails here, before a
+  # tag ships it.
+  installed:
+    name: installed (the packaged tool, against lzop)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: clone rust-fs-core, which owns package-cli, the output-budget wrapper and the CLI plumbing
+        run: |
+          git clone --depth 1 --branch v0.2.23 \
+            https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install lzop, the oracle
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lzop
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-installed-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: build the tool and the suites
+        # Before the tier, so its log holds the tests and not a compile.
+        run: |
+          cargo build --quiet --locked --release --features cli
+          cargo test --quiet --locked --release --features cli --no-run \
+            --test cli --test cli_files --test oracle_lzop_files
+      - name: package the release tarball and unpack it into a prefix
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          mkdir -p tmp/package/prefix
+          cd tmp/package
+          tarball="$(bash ../../scripts/core.sh package-cli "$version" linux-x86_64 ../../target/release | tail -n 1)"
+          tar -xzf "$tarball" -C prefix
+          ls -l prefix/bin
+      - name: test (installed)
+        shell: bash
+        run: |
+          export LZO1X_BIN="$PWD/tmp/package/prefix/bin/lzo1x"
+          bash scripts/tier.sh "test (installed)" installed 40 2500 -- cargo test --locked --features cli --release --test cli --test cli_files --test oracle_lzop_files -- --include-ignored
+          bash scripts/core.sh test-floor installed 11
+      - name: Keep the tier logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-${{ github.job }}
+          path: tmp/logs/
+          if-no-files-found: error
+          retention-days: 7
+
   ci-ok:
     name: ci-ok
-    needs: [test, semver]
+    needs: [test, semver, installed]
     if: always()
     runs-on: ubuntu-latest
     steps:

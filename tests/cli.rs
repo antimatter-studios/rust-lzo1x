@@ -13,15 +13,32 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const BIN: Option<&str> = option_env!("CARGO_BIN_EXE_rust-lzo1x");
+
+/// The binary under test: `LZO1X_BIN` when it is set, which is how CI and
+/// a developer run this suite against an installed copy (#45), and
+/// otherwise the one cargo just built. A path that is not a file fails;
+/// it never falls back.
+fn bin() -> String {
+    if let Ok(path) = std::env::var("LZO1X_BIN") {
+        assert!(
+            std::path::Path::new(&path).is_file(),
+            "LZO1X_BIN={path} is not a file"
+        );
+        return path;
+    }
+    BIN.expect(
+        "the rust-lzo1x binary is built only with `--features cli`; run cargo test with it, \
+         or set LZO1X_BIN to an installed lzo1x",
+    )
+    .to_string()
+}
 const CRATE: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The program as a user runs it: `argv[0]` is `lzo1x`.
 fn lzo1x() -> Command {
     use std::os::unix::process::CommandExt;
-    let mut cmd = Command::new(BIN.expect(
-        "the rust-lzo1x binary is built only with `--features cli`; run cargo test with it",
-    ));
+    let mut cmd = Command::new(bin());
     cmd.arg0("lzo1x");
     cmd
 }
@@ -117,7 +134,12 @@ fn its_help_carries_an_example() {
 
 #[test]
 fn the_repository_entry_point_lists_it_for_packaging() {
-    let out = ok(Command::new(BIN.expect("built with --features cli")).args(["generate", "names"]));
+    use std::os::unix::process::CommandExt;
+    // Under the repository's own name, as packaging calls it: an installed
+    // `bin/lzo1x` is the same program, answering as the tool by default.
+    let out = ok(Command::new(bin())
+        .arg0("rust-lzo1x")
+        .args(["generate", "names"]));
     assert_eq!(text(&out.stdout).trim(), "lzo1x");
 }
 

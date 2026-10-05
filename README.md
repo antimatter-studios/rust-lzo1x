@@ -150,6 +150,16 @@ cargo test -- --ignored # adds the oracle tests (requires lzop)
 
 Install `lzop` with `brew install lzop` or `apt-get install lzop`.
 
+The command-line suites run against an installed `lzo1x` as well as the one
+cargo builds: set `LZO1X_BIN` to it. CI does this with the release tarball
+unpacked into a prefix; against a Homebrew install it is
+
+```sh
+LZO1X_BIN="$(brew --prefix)/bin/lzo1x" chore test:installed
+```
+
+A `LZO1X_BIN` that names no file fails the suites rather than falling back.
+
 ### The tiers, quietly
 
 `chore` runs the same four selections CI does, each through
