@@ -184,7 +184,7 @@ tasks:
         if [ -e ../rust-fs-core ]; then
           echo "rust-fs-core: already checked out at ../rust-fs-core, left alone"
         else
-          git clone --depth 1 --branch v0.3.0 \
+          git clone --depth 1 --branch v0.3.1 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
         fi
 

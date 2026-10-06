@@ -47,7 +47,7 @@ cli = ["dep:clap", "dep:rust-fs-core", "rust-fs-core/cli"]
 
 [dependencies]
 # Both optional, behind `cli`: the library has no dependencies.
-rust-fs-core = { path = "../rust-fs-core", version = "0.3.0", optional = true }
+rust-fs-core = { path = "../rust-fs-core", version = "0.3.1", optional = true }
 clap = { version = "4.5", optional = true, default-features = false, features = ["std", "help", "usage", "error-context", "suggestions"] }
 
 [dev-dependencies]
