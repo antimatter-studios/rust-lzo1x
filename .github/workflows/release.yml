@@ -16,7 +16,7 @@ env:
   # cloned as its path sibling by every job that runs cargo, and passed to
   # the release-cli call below as core-ref. tests/release_attestation.rs
   # holds the three to one value.
-  FS_CORE_REF: v0.3.2
+  FS_CORE_REF: v0.3.6
 
 jobs:
   test:
@@ -255,5 +255,5 @@ jobs:
       attestations: write
     uses: antimatter-studios/rust-fs-core/.github/workflows/release-cli.yml@943a3136cd9bc3f8e2ca55ce3bd624adba9f40b7 # v0.3.6
     with:
-      core-ref: v0.3.2
+      core-ref: v0.3.6
       toolchain: 1.95.0

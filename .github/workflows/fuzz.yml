@@ -72,7 +72,7 @@ jobs:
       # the feature is on, so it is checked out before cargo runs.
       - name: clone rust-fs-core, the cli feature's path dependency
         run: |
-          git clone --depth 1 --branch v0.3.2 \
+          git clone --depth 1 --branch v0.3.6 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
 
       - name: Show what the corpus holds
