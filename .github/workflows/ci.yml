@@ -50,7 +50,7 @@ jobs:
       # a chore task without installing chore on two runner platforms.
       - name: clone rust-fs-core, which owns the output-budget wrapper and the CLI plumbing
         run: |
-          git clone --depth 1 --branch v0.3.6 \
+          git clone --depth 1 --branch v0.3.7 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
 
       - name: Cache cargo registry
@@ -213,7 +213,7 @@ jobs:
       # rust-fs-core for ../rust-fs-core/scripts/output-budget.sh only, as in the test job.
       - name: clone rust-fs-core, which owns the output-budget wrapper
         run: |
-          git clone --depth 1 --branch v0.3.6 \
+          git clone --depth 1 --branch v0.3.7 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -239,7 +239,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: clone rust-fs-core, which owns package-cli, the output-budget wrapper and the CLI plumbing
         run: |
-          git clone --depth 1 --branch v0.3.6 \
+          git clone --depth 1 --branch v0.3.7 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
