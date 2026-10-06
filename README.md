@@ -1,5 +1,19 @@
 # rust-lzo1x
 
+> **Renamed to [`rust-lzo1x`](https://crates.io/crates/rust-lzo1x).**
+> `am-lzo1x` 0.3.2 is the last version published under this name. New versions
+> are published only as `rust-lzo1x`, starting at 0.4.0. To move, change one line
+> in `Cargo.toml`:
+>
+> ```toml
+> # before
+> am-lzo1x = "0.3"
+> # after
+> rust-lzo1x = "0.4"
+> ```
+>
+> The import is unchanged: `use lzo1x::...` keeps working.
+
 Pure-Rust **LZO1X compressor and decompressor**. No C bindings, no `unsafe`, no
 dependencies.
 

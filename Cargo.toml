@@ -1,9 +1,9 @@
 [package]
 name = "am-lzo1x"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 license = "MIT"
-description = "Pure-Rust LZO1X compressor and decompressor. Implemented from the published stream grammar; no C bindings, no unsafe, no dependencies."
+description = "Renamed to rust-lzo1x: this crate receives no further versions. Depend on rust-lzo1x instead; the import is unchanged (use lzo1x)."
 repository = "https://github.com/antimatter-studios/rust-lzo1x"
 keywords = ["lzo", "lzo1x", "decompression", "compression", "squashfs"]
 categories = ["compression", "filesystem"]
