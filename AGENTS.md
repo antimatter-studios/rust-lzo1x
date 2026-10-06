@@ -202,13 +202,13 @@ chore test:scripts     # tests/scripts/*.sh, by glob
 chore lint             # the agent-core check, fmt, clippy -D warnings
 ```
 
-`scripts/tier.sh` maps directly onto "Output is budgeted": it resolves
-rust-fs-core's `scripts/output-budget.sh` from `$FS_CORE_ROOT` or the
-`../rust-fs-core` sibling, verifies it by `--version`, and **keeps no copy
-here**. The floor is rust-fs-core's too: `scripts/core.sh test-floor TIER N`
-refuses a tier that executed fewer tests than its floor, and
-`scripts/core.sh semver-check` runs the semver tier; `scripts/core.sh
-family-check` fails CI if a copy of either is ever committed here. The
+"Output is budgeted" is rust-fs-core's `scripts/tier.sh`, **run in place**
+from the `../rust-fs-core` checkout at the pinned version; this repository
+keeps no copy of it or of any family script. The floor is rust-fs-core's too:
+`../rust-fs-core/scripts/test-floor.sh TIER N` refuses a tier that executed
+fewer tests than its floor, `../rust-fs-core/scripts/semver-check.sh` runs
+the semver tier, and `../rust-fs-core/scripts/family-check.sh` fails CI if a
+copy of any of them is ever committed here. The
 budgets and floors are written twice — `chores.yml` and
 `.github/workflows/ci.yml` — and `tests/scripts/test-tier-budgets-agree.sh`
 fails a pull request where the two disagree: raise a number in both or in

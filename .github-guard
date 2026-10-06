@@ -45,7 +45,7 @@
 # again, which GitHub reads as permanently pending: with enforce_admins on,
 # nothing merges and there is nothing red to point at. And the aggregate's
 # shape is now checked rather than trusted: rust-fs-core's ci-gate, run as
-# `bash scripts/core.sh ci-gate` in every `test` leg and in `chore lint`,
+# `bash ../rust-fs-core/scripts/ci-gate.sh` in every `test` leg and in `chore lint`,
 # fails if `ci-ok` loses `if: always()`, misses a job in `needs:`, or if this
 # file names anything but `ci-ok`.
 [checks]

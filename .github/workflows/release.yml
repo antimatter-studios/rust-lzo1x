@@ -16,7 +16,7 @@ env:
   # cloned as its path sibling by every job that runs cargo, and passed to
   # the release-cli call below as core-ref. tests/release_attestation.rs
   # holds the three to one value.
-  FS_CORE_REF: v0.3.1
+  FS_CORE_REF: v0.3.2
 
 jobs:
   test:
@@ -171,7 +171,7 @@ jobs:
       # anything (rust-fs-core#209).
       - name: the CHANGELOG describes this version
         shell: bash
-        run: bash scripts/core.sh release-notes "$GITHUB_REF_NAME" >/dev/null
+        run: bash ../rust-fs-core/scripts/release-notes.sh "$GITHUB_REF_NAME" >/dev/null
 
       - name: package the crate
         shell: bash
@@ -226,7 +226,7 @@ jobs:
         run: |
           set -euo pipefail
           # The release body is this version's CHANGELOG section (rust-fs-core#209).
-          bash scripts/core.sh release-notes "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
+          bash ../rust-fs-core/scripts/release-notes.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/release-notes.md"
           else
@@ -247,7 +247,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: antimatter-studios/rust-fs-core/.github/workflows/release-cli.yml@2dbd7ddc63456f7e2d9ad4ba7e77ed10c3258844 # v0.3.1
+    uses: antimatter-studios/rust-fs-core/.github/workflows/release-cli.yml@c471c826edc78866f572b873cbc165cb61b86ccf # v0.3.2
     with:
-      core-ref: v0.3.1
+      core-ref: v0.3.2
       toolchain: 1.95.0

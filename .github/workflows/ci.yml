@@ -41,7 +41,7 @@ jobs:
       - name: Install lzop (macOS)
         if: runner.os == 'macOS'
         run: brew install lzop
-      # rust-fs-core is checked out for two things: scripts/output-budget.sh,
+      # rust-fs-core is checked out for two things: ../rust-fs-core/scripts/output-budget.sh,
       # which every tier below runs through and which lives there and nowhere
       # else, and the `cli` feature's command-line plumbing, an optional path
       # dependency cargo resolves for every command. The library itself does
@@ -50,7 +50,7 @@ jobs:
       # a chore task without installing chore on two runner platforms.
       - name: clone rust-fs-core, which owns the output-budget wrapper and the CLI plumbing
         run: |
-          git clone --depth 1 --branch v0.3.1 \
+          git clone --depth 1 --branch v0.3.2 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
 
       - name: Cache cargo registry
@@ -78,23 +78,23 @@ jobs:
             bash "$t"
           done
       # The family scripts are rust-fs-core's alone: this fails if a copy of
-      # one is committed here, scripts/core.sh differs from core's, or
+      # one is committed here, or
       # anything here still calls a local copy.
       - name: no copy of a rust-fs-core family script
         shell: bash
-        run: bash scripts/core.sh family-check
+        run: bash ../rust-fs-core/scripts/family-check.sh
       # .github-guard requires ci-ok and nothing else, and ci-ok needs every
       # job below: rust-fs-core's ci-gate holds both halves, so a job added
       # without ci-ok, or a check named by hand again, fails here. Every leg
       # runs it; PyYAML is installed above on macOS.
       - name: the one required check stands for every job
         shell: bash
-        run: bash scripts/core.sh ci-gate
+        run: bash ../rust-fs-core/scripts/ci-gate.sh
       # THE FOUR TIERS, EACH QUIET AND EACH UNDER A MEASURED BUDGET (#20).
       #
       # These four steps printed 627 of this job's 1,095 lines, and two of
       # them already redirected to a file and then `cat` it straight back on
-      # every run, green or red. scripts/tier.sh sends the transcript to
+      # every run, green or red. ../rust-fs-core/scripts/tier.sh sends the transcript to
       # tmp/logs/<tier>.log and prints one verdict line; the log is uploaded
       # below, so nothing is lost, it is just not recited.
       #
@@ -113,8 +113,8 @@ jobs:
       - name: test (release)
         shell: bash
         run: |
-          bash scripts/tier.sh "test (release)" release 340 20000 -- cargo test --locked --features cli --release
-          bash scripts/core.sh test-floor release 121
+          bash ../rust-fs-core/scripts/tier.sh "test (release)" release 340 20000 -- cargo test --locked --features cli --release
+          bash ../rust-fs-core/scripts/test-floor.sh release 121
 
       # THE ORACLE SELECTION, which is disjoint from every other one here and
       # can empty on its own: an `#[ignore]` dropped, the tests moved to
@@ -124,8 +124,8 @@ jobs:
       - name: test (release, oracle)
         shell: bash
         run: |
-          bash scripts/tier.sh "test (release, oracle)" release-oracle 105 4000 -- cargo test --locked --features cli --release -- --ignored
-          bash scripts/core.sh test-floor release-oracle 9
+          bash ../rust-fs-core/scripts/tier.sh "test (release, oracle)" release-oracle 105 4000 -- cargo test --locked --features cli --release -- --ignored
+          bash ../rust-fs-core/scripts/test-floor.sh release-oracle 9
 
       # A DEBUG RUN BESIDE THE RELEASE ONES, NOT INSTEAD OF THEM (#13).
       # `[profile.release]` does not enable overflow-checks -- deliberately,
@@ -152,8 +152,8 @@ jobs:
         env:
           EXPECT_OVERFLOW_CHECKS: "1"
         run: |
-          bash scripts/tier.sh "test (debug)" debug 340 20000 -- cargo test --locked --features cli
-          bash scripts/core.sh test-floor debug 121
+          bash ../rust-fs-core/scripts/tier.sh "test (debug)" debug 340 20000 -- cargo test --locked --features cli
+          bash ../rust-fs-core/scripts/test-floor.sh debug 121
 
       # AND THE ORACLE SUITE IN DEBUG TOO, WHICH IS WHERE AN OVERFLOW IS MOST
       # LIKELY TO FIRE: real lzop output and deliberately adversarial streams,
@@ -164,8 +164,8 @@ jobs:
       - name: test (debug, oracle)
         shell: bash
         run: |
-          bash scripts/tier.sh "test (debug, oracle)" debug-oracle 105 4000 -- cargo test --locked --features cli -- --ignored
-          bash scripts/core.sh test-floor debug-oracle 9
+          bash ../rust-fs-core/scripts/tier.sh "test (debug, oracle)" debug-oracle 105 4000 -- cargo test --locked --features cli -- --ignored
+          bash ../rust-fs-core/scripts/test-floor.sh debug-oracle 9
 
       # A quiet tier keeps everything; it just does not print it. Without this
       # the transcript of a failing run dies with the runner, and the one-line
@@ -197,12 +197,12 @@ jobs:
     # `chore check:semver`, spelled out because the workflow does not install chore: this tree's public API against the newest
     # version on crates.io, refusing a break the version in Cargo.toml does
     # not declare. Why, and what it cannot see, is at the top of
-    # scripts/semver-check.sh.
+    # ../rust-fs-core/scripts/semver-check.sh.
     name: semver (public API against crates.io)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # The version scripts/semver-check.sh expects. A prebuilt binary,
+      # The version ../rust-fs-core/scripts/semver-check.sh expects. A prebuilt binary,
       # checksum-verified by the action, rather than a ten-minute build.
       CARGO_SEMVER_CHECKS_VERSION: "0.50.0"
       # A failing tier prints only its verdict by default. Here the tail IS
@@ -210,10 +210,10 @@ jobs:
       OUTPUT_BUDGET_FAIL_TAIL: "200"
     steps:
       - uses: actions/checkout@v4
-      # rust-fs-core for scripts/output-budget.sh only, as in the test job.
+      # rust-fs-core for ../rust-fs-core/scripts/output-budget.sh only, as in the test job.
       - name: clone rust-fs-core, which owns the output-budget wrapper
         run: |
-          git clone --depth 1 --branch v0.3.1 \
+          git clone --depth 1 --branch v0.3.2 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -222,7 +222,7 @@ jobs:
           tool: cargo-semver-checks@${{ env.CARGO_SEMVER_CHECKS_VERSION }}
       - name: semver (quiet, budgeted)
         shell: bash
-        run: bash scripts/tier.sh semver semver 40 4000 -- bash scripts/core.sh semver-check
+        run: bash ../rust-fs-core/scripts/tier.sh semver semver 40 4000 -- bash ../rust-fs-core/scripts/semver-check.sh
 
   # THE TOOL AS A USER GETS IT (#45). The CLI suites otherwise run the
   # binary cargo just built; here the release tarball is built with the
@@ -239,7 +239,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: clone rust-fs-core, which owns package-cli, the output-budget wrapper and the CLI plumbing
         run: |
-          git clone --depth 1 --branch v0.3.1 \
+          git clone --depth 1 --branch v0.3.2 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -266,15 +266,15 @@ jobs:
           version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
           mkdir -p tmp/package/prefix
           cd tmp/package
-          tarball="$(bash ../../scripts/core.sh package-cli "$version" linux-x86_64 ../../target/release | tail -n 1)"
+          tarball="$(bash ../../../rust-fs-core/scripts/package-cli.sh "$version" linux-x86_64 ../../target/release | tail -n 1)"
           tar -xzf "$tarball" -C prefix
           ls -l prefix/bin
       - name: test (installed)
         shell: bash
         run: |
           export LZO1X_BIN="$PWD/tmp/package/prefix/bin/lzo1x"
-          bash scripts/tier.sh "test (installed)" installed 40 2500 -- cargo test --locked --features cli --release --test cli --test cli_files --test oracle_lzop_files -- --include-ignored
-          bash scripts/core.sh test-floor installed 11
+          bash ../rust-fs-core/scripts/tier.sh "test (installed)" installed 40 2500 -- cargo test --locked --features cli --release --test cli --test cli_files --test oracle_lzop_files -- --include-ignored
+          bash ../rust-fs-core/scripts/test-floor.sh installed 11
       - name: Keep the tier logs
         uses: actions/upload-artifact@v4
         if: always()

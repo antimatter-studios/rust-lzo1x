@@ -31,7 +31,6 @@ test-disks/.vm-cache/
 # chore fingerprint cache (sources:/generates: checksums). Derived data.
 .chore/
 
-# Tier logs and the run's private copy of rust-fs-core's output-budget.sh.
-# scripts/tier.sh writes tmp/logs/<tier>.log here and CI uploads the
+# Tier logs. rust-fs-core's scripts/tier.sh, run in place, writes tmp/logs/<tier>.log here and CI uploads the
 # directory as an artifact; nothing in it is committed.
 /tmp/

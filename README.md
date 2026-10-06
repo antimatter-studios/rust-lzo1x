@@ -163,7 +163,7 @@ A `LZO1X_BIN` that names no file fails the suites rather than falling back.
 ### The tiers, quietly
 
 `chore` runs the same four selections CI does, each through
-`scripts/tier.sh`: the whole transcript goes to `tmp/logs/<tier>.log`, a pass
+rust-fs-core's `scripts/tier.sh`, run in place: the whole transcript goes to `tmp/logs/<tier>.log`, a pass
 prints one verdict line naming it, and a run that passed but printed more than
 its measured budget exits **65**.
 
