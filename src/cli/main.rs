@@ -2,7 +2,7 @@
 //!
 //! Installed as `rust-lzo1x` and linked as `lzo1x`. The dispatch, the
 //! `--version`, `doctor`, the output contract, the man pages and the
-//! completions are `fs_core::cli` (am-fs-core's `cli` feature), the same
+//! completions are `fs_core::cli` (rust-fs-core's `cli` feature), the same
 //! plumbing every tool in the family uses; this file is only the tool.
 //!
 //! `lzo1x` handles `.lzo` files the way `gzip` handles `.gz` files (#39):
@@ -32,7 +32,7 @@ static FAMILY: cli::Family = cli::Family {
     version: env!("CARGO_PKG_VERSION"),
     about: "LZO1X tools: .lzo files and raw LZO1X blocks",
     install_hints: &[
-        "`cargo install am-lzo1x --features cli` from crates.io",
+        "`cargo install rust-lzo1x --features cli` from crates.io",
         "`brew install antimatter-studios/tap/rust-lzo1x`",
     ],
     tools: &[TOOL],

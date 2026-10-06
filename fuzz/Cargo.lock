@@ -3,10 +3,6 @@
 version = 4
 
 [[package]]
-name = "am-lzo1x"
-version = "0.2.0"
-
-[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -77,8 +73,8 @@ dependencies = [
 name = "lzo1x-fuzz"
 version = "0.0.0"
 dependencies = [
- "am-lzo1x",
  "libfuzzer-sys",
+ "rust-lzo1x",
 ]
 
 [[package]]
@@ -86,6 +82,10 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
+name = "rust-lzo1x"
+version = "0.4.0"
 
 [[package]]
 name = "shlex"

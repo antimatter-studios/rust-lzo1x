@@ -14,7 +14,7 @@
 # the family had several, reached four different ways, each repository
 # internally consistent and nothing comparing them.
 #
-# Every other consumer resolves it through its `am-fs-core` dependency. This
+# Every other consumer resolves it through its `rust-fs-core` dependency. This
 # crate has NO dependencies at all -- "no C bindings, no unsafe, no
 # dependencies" is the first line of its description -- so there is nothing
 # for cargo to unpack and nothing to ask. The alternative was a repo-local

@@ -1,9 +1,9 @@
 [package]
-name = "am-lzo1x"
-version = "0.3.2"
+name = "rust-lzo1x"
+version = "0.4.0"
 edition = "2021"
 license = "MIT"
-description = "Renamed to rust-lzo1x: this crate receives no further versions. Depend on rust-lzo1x instead; the import is unchanged (use lzo1x)."
+description = "Pure-Rust LZO1X compressor and decompressor. Implemented from the published stream grammar; no C bindings, no unsafe, no dependencies."
 repository = "https://github.com/antimatter-studios/rust-lzo1x"
 keywords = ["lzo", "lzo1x", "decompression", "compression", "squashfs"]
 categories = ["compression", "filesystem"]
@@ -13,6 +13,11 @@ readme = "README.md"
 # part of this one. Without this, `cargo package` and `cargo publish`
 # try to include it and fail on the nightly-only dependency.
 exclude = ["fuzz"]
+
+# The name this crate had on crates.io: the semver check's baseline until
+# a release exists under the new one (rust-fs-core's semver-check.sh).
+[package.metadata.semver]
+former-name = "rust-lzo1x"
 
 [lib]
 name = "lzo1x"
@@ -37,12 +42,12 @@ licenses = ["LICENSE"]
 [features]
 # The tool and nothing else. The plumbing every tool in the family shares
 # -- dispatch, --version, doctor, the output contract, man pages and
-# completions -- is am-fs-core's `cli` feature. clap is MIT/Apache-2.0.
-cli = ["dep:clap", "dep:am-fs-core", "am-fs-core/cli"]
+# completions -- is rust-fs-core's `cli` feature. clap is MIT/Apache-2.0.
+cli = ["dep:clap", "dep:rust-fs-core", "rust-fs-core/cli"]
 
 [dependencies]
 # Both optional, behind `cli`: the library has no dependencies.
-am-fs-core = { path = "../rust-fs-core", version = "0.2.23", optional = true }
+rust-fs-core = { path = "../rust-fs-core", version = "0.3.0", optional = true }
 clap = { version = "4.5", optional = true, default-features = false, features = ["std", "help", "usage", "error-context", "suggestions"] }
 
 [dev-dependencies]
@@ -61,7 +66,7 @@ clap = { version = "4.5", optional = true, default-features = false, features = 
 # THE DESCRIPTION ABOVE STILL SAYS "no dependencies" AND STILL MEANS IT.
 # A dev-dependency is built for this crate's own test and example
 # targets and for nothing else: it is not in the dependency graph
-# `cargo add am-lzo1x` resolves, not in the published .crate's
+# `cargo add rust-lzo1x` resolves, not in the published .crate's
 # [dependencies], and not linked into the staticlib a consumer takes.
 # The promise is about what a consumer has to build, and this is not
 # something a consumer builds.

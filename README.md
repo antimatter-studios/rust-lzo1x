@@ -1,19 +1,5 @@
 # rust-lzo1x
 
-> **Renamed to [`rust-lzo1x`](https://crates.io/crates/rust-lzo1x).**
-> `am-lzo1x` 0.3.2 is the last version published under this name. New versions
-> are published only as `rust-lzo1x`, starting at 0.4.0. To move, change one line
-> in `Cargo.toml`:
->
-> ```toml
-> # before
-> am-lzo1x = "0.3"
-> # after
-> rust-lzo1x = "0.4"
-> ```
->
-> The import is unchanged: `use lzo1x::...` keeps working.
-
 Pure-Rust **LZO1X compressor and decompressor**. No C bindings, no `unsafe`, no
 dependencies.
 
@@ -105,7 +91,7 @@ while an encoder need only produce streams a conforming decoder accepts, and is
 free to use a subset of the grammar.
 
 Both are MIT. The `lzo1x` crate name on crates.io belongs to an unrelated
-GPL-2.0 implementation, which is why this one is published as `am-lzo1x`.
+GPL-2.0 implementation, which is why this one is published as `rust-lzo1x`.
 
 ## How the encoder is checked
 
@@ -227,8 +213,8 @@ repository, not uploaded from someone's machine. To check the crates.io
 download of version `X.Y.Z`:
 
 ```sh
-curl -sSfLo am-lzo1x-X.Y.Z.crate https://static.crates.io/crates/am-lzo1x/am-lzo1x-X.Y.Z.crate
-gh attestation verify am-lzo1x-X.Y.Z.crate \
+curl -sSfLo rust-lzo1x-X.Y.Z.crate https://static.crates.io/crates/rust-lzo1x/rust-lzo1x-X.Y.Z.crate
+gh attestation verify rust-lzo1x-X.Y.Z.crate \
   --repo antimatter-studios/rust-lzo1x \
   --signer-workflow antimatter-studios/rust-lzo1x/.github/workflows/release.yml
 ```
