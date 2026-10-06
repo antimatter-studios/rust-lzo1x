@@ -840,7 +840,7 @@ fn scan_shell(line: &str) -> ShellScan {
 /// the strict direction.
 /// The run inside a tier wrapper, if this command is one.
 ///
-/// `bash scripts/tier.sh "test (debug)" debug 120 9000 -- cargo test --locked`
+/// `bash ../rust-fs-core/scripts/tier.sh "test (debug)" debug 120 9000 -- cargo test --locked`
 /// IS the debug run: the wrapper redirects the transcript to a file and exits
 /// with the command's own status. Everything this file decides about a run --
 /// whether its status reaches the step, whether an `&&` list can skip it,
@@ -861,7 +861,7 @@ fn scan_shell(line: &str) -> ShellScan {
 /// fails if that guard is ever removed, so the two cannot be separated.
 ///
 /// The prefix is matched on the script's NAME, not on `bash`: `bash
-/// scripts/tier.sh`, `./scripts/tier.sh` and `scripts/tier.sh` are the same
+/// ../rust-fs-core/scripts/tier.sh`, `./scripts/tier.sh` and `../rust-fs-core/scripts/tier.sh` are the same
 /// invocation, and an assignment prefix in front of any of them is left where
 /// it is, because it is the environment the whole thing runs under.
 fn unwrap_tier(words: &[String]) -> Option<&[String]> {
@@ -874,7 +874,7 @@ fn unwrap_tier(words: &[String]) -> Option<&[String]> {
 }
 
 /// The wrapper every tier runs through, as ci.yml and chores.yml spell it.
-const TIER_WRAPPER: &str = "scripts/tier.sh";
+const TIER_WRAPPER: &str = "../rust-fs-core/scripts/tier.sh";
 
 fn cargo_test_arguments(words: &[String]) -> Option<Vec<&str>> {
     // A tier wrapper is transparent. Recursing rather than inlining means a
@@ -2470,7 +2470,7 @@ mod tier_wrapper {
     fn a_wrapped_run_is_the_run_it_wraps() {
         let bare_words = words("cargo test --locked --release");
         let wrapped_words =
-            words("bash scripts/tier.sh label log 120 9000 -- cargo test --locked --release");
+            words("bash ../rust-fs-core/scripts/tier.sh label log 120 9000 -- cargo test --locked --release");
         let bare = cargo_test_arguments(&bare_words).expect("a bare run is a run");
         let wrapped = cargo_test_arguments(&wrapped_words).expect("a wrapped run is a run");
         assert_eq!(
@@ -2482,9 +2482,9 @@ mod tier_wrapper {
     #[test]
     fn the_wrapper_is_recognised_however_it_is_spelled() {
         for line in [
-            "bash scripts/tier.sh l log 1 2 -- cargo test --locked",
+            "bash ../rust-fs-core/scripts/tier.sh l log 1 2 -- cargo test --locked",
             "./scripts/tier.sh l log 1 2 -- cargo test --locked",
-            "scripts/tier.sh l log 1 2 -- cargo test --locked",
+            "../rust-fs-core/scripts/tier.sh l log 1 2 -- cargo test --locked",
             "bash ./scripts/tier.sh l log 1 2 -- cargo test --locked",
         ] {
             let spelled = words(line);
@@ -2501,7 +2501,8 @@ mod tier_wrapper {
         // then thrown away by the pipe exactly as it would be without the
         // wrapper. A wrapper that made a piped run acceptable would have
         // turned this guard off rather than taught it something.
-        let piped = "bash scripts/tier.sh l log 1 2 -- cargo test --locked | tee out.log";
+        let piped =
+            "bash ../rust-fs-core/scripts/tier.sh l log 1 2 -- cargo test --locked | tee out.log";
         assert!(
             runs_with_overflow_checks(piped).is_empty(),
             "a wrapped run whose status is discarded still does not count",
@@ -2513,7 +2514,7 @@ mod tier_wrapper {
         // `--lib` narrows the selection and disqualifies a run. It has to do
         // that inside the wrapper as well, or a tier could quietly stop
         // running the overflow probe.
-        let narrowed = "bash scripts/tier.sh l log 1 2 -- cargo test --locked --test oracle_lzop";
+        let narrowed = "bash ../rust-fs-core/scripts/tier.sh l log 1 2 -- cargo test --locked --test oracle_lzop";
         assert!(
             runs_with_overflow_checks(narrowed).is_empty(),
             "a narrowed selection inside the wrapper was counted as the debug run",
@@ -2523,8 +2524,8 @@ mod tier_wrapper {
     #[test]
     fn a_wrapper_with_no_command_after_it_is_not_a_run() {
         for line in [
-            "bash scripts/tier.sh l log 1 2 --",
-            "bash scripts/tier.sh l log 1 2",
+            "bash ../rust-fs-core/scripts/tier.sh l log 1 2 --",
+            "bash ../rust-fs-core/scripts/tier.sh l log 1 2",
         ] {
             let empty = words(line);
             assert!(cargo_test_arguments(&empty).is_none(), "counted: {line}");
@@ -2549,12 +2550,15 @@ mod tier_wrapper {
     /// on its own.
     #[test]
     fn the_wrapper_this_file_trusts_is_itself_under_test() {
-        for required in ["scripts/tier.sh", "tests/scripts/test-tier-wrapper.sh"] {
+        for required in [
+            "../rust-fs-core/scripts/tier.sh",
+            "tests/scripts/test-tier-wrapper.sh",
+        ] {
             let path = manifest_dir().join(required);
             assert!(
                 path.exists(),
                 "{} is missing. This file stopped being able to see inside a tier run when \
-                 the runs moved behind scripts/tier.sh; what replaced the text check is a \
+                 the runs moved behind ../rust-fs-core/scripts/tier.sh; what replaced the text check is a \
                  guard that RUNS the wrapper and requires the command's own status back. \
                  Without it, `cargo test | tee` is refused here and a wrapper that swallowed \
                  a failure would not be.",
