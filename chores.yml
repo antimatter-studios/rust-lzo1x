@@ -17,7 +17,7 @@ chore_min_version: 0.6.0
 #      archive and nothing else.
 #
 #   2. NOTHING LINKS ITS ARCHIVE. rust-fs-squashfs takes this crate as
-#      `am-lzo1x = "0.1.0"` — a normal crates.io dependency resolved by cargo,
+#      `rust-lzo1x = "0.1.0"` — a normal crates.io dependency resolved by cargo,
 #      not a `.a` handed to ld. So `staticlib` exists for uniformity with the
 #      sibling libraries and for anyone building this crate alone; no consumer
 #      in the family uses its output today.
@@ -58,7 +58,7 @@ chore_min_version: 0.6.0
 # suites hold, the lzop oracle ones included.
 #
 # Raised on 2026-10-05 (#38) from 270 / 16,000 and 70 / 4,000, measured in CI
-# run 37320119187 on ubuntu-latest: the `cli` feature adds clap and am-fs-core to
+# run 37320119187 on ubuntu-latest: the `cli` feature adds clap and rust-fs-core to
 # the `Compiling` lines and three test binaries (cli, release_cli,
 # release_attestation's growth) to the per-binary result lines. The debug
 # tiers did not run in that run (the matrix stopped on the oracle tier's
@@ -172,7 +172,7 @@ tasks:
     # near-copy of core's under another name, which is exactly how the family
     # ended up with three divergent copies.
     #
-    # v0.2.23 is the release the `cli` feature's am-fs-core requirement
+    # v0.2.23 is the release the `cli` feature's rust-fs-core requirement
     # names. v0.2.18 was the first release that also serves ci-gate, after the floor
     # and semver check (v0.2.16), all run through scripts/core.sh; the
     # wrapper has been packaged since v0.2.11. The ref is repeated in
@@ -184,7 +184,7 @@ tasks:
         if [ -e ../rust-fs-core ]; then
           echo "rust-fs-core: already checked out at ../rust-fs-core, left alone"
         else
-          git clone --depth 1 --branch v0.2.23 \
+          git clone --depth 1 --branch v0.3.0 \
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
         fi
 

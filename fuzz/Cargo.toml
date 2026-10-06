@@ -19,7 +19,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-am-lzo1x = { path = ".." }
+rust-lzo1x = { path = ".." }
 
 [[bin]]
 name = "decompress"

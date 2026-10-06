@@ -1,4 +1,4 @@
-# Human-code review — am-lzo1x
+# Human-code review — rust-lzo1x
 
 **This document is analysis only. No code was changed, no tests were added, nothing was
 committed.** It is the output of Phase 0 (Understand) and Phase 1 (Scan and Triage) of the

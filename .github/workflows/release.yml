@@ -12,11 +12,11 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # The rust-fs-core tag the `cli` feature's am-fs-core requirement names,
+  # The rust-fs-core tag the `cli` feature's rust-fs-core requirement names,
   # cloned as its path sibling by every job that runs cargo, and passed to
   # the release-cli call below as core-ref. tests/release_attestation.rs
   # holds the three to one value.
-  FS_CORE_REF: v0.2.23
+  FS_CORE_REF: v0.3.0
 
 jobs:
   test:
@@ -165,7 +165,7 @@ jobs:
             https://github.com/antimatter-studios/rust-fs-core.git ../rust-fs-core
 
       # No `--locked` here or on the publish: packaging rewrites the
-      # optional am-fs-core path dependency into its registry equivalent in
+      # optional rust-fs-core path dependency into its registry equivalent in
       # the packaged lockfile, which `--locked` forbids.
       - name: package the crate
         shell: bash
@@ -238,7 +238,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: antimatter-studios/rust-fs-core/.github/workflows/release-cli.yml@0f7714910080f5f2a080ed6032cccf19bc338064 # v0.2.23
+    uses: antimatter-studios/rust-fs-core/.github/workflows/release-cli.yml@9e900154a7dff2a6c8f136db31def33bed9f09cc # v0.3.0
     with:
-      core-ref: v0.2.23
+      core-ref: v0.3.0
       toolchain: 1.95.0

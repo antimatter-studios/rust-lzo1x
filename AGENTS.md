@@ -1,6 +1,6 @@
 # Working in rust-lzo1x (agent guide)
 
-A pure-Rust LZO1X compressor and decompressor, published as `am-lzo1x`: no C
+A pure-Rust LZO1X compressor and decompressor, published as `rust-lzo1x`: no C
 bindings, no `unsafe` (`#![forbid(unsafe_code)]`), no dependencies. One decoder
 handles every LZO1X-\* variant, because they share one decode grammar; the
 encoder emits a deliberate subset of it. A small CLI works on raw blocks. The
@@ -183,7 +183,7 @@ reads and writes.
 ## Clean room
 
 The widely used LZO implementations are GPL, and the `lzo1x` name on
-crates.io belongs to one of them — that is why this crate is `am-lzo1x`. The
+crates.io belongs to one of them — that is why this crate is `rust-lzo1x`. The
 decoder was written from the published **prose** description of the grammar
 (reproduced in the crate docs so the mapping is auditable); the encoder is this
 crate's own decoder run backwards. **Do not read, port or paste from any other

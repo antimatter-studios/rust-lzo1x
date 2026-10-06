@@ -1,8 +1,19 @@
 # Changelog
 
-Notable changes to `am-lzo1x`, newest first. This is a `0.x` crate, so the
+Notable changes to `rust-lzo1x` (published as `am-lzo1x` until its last version), newest first. This is a `0.x` crate, so the
 **minor** is the compatibility boundary: a minor bump may break API, a patch
 never does.
+
+## [Unreleased]
+
+## [0.4.0] — 2026-10-06
+
+### Changed
+
+- **Published as `rust-lzo1x`, the repository's name.** The crate was `am-lzo1x`
+  until its last version, which stays on crates.io pointing here. A
+  dependent changes one line in `Cargo.toml`; the import (`lzo1x`) and the C symbols are unchanged.
+- **Depends on `rust-fs-core` 0.3.0**, the same library under its new name.
 
 ## [0.3.2] — 2026-10-06
 
@@ -241,7 +252,9 @@ consumers are unaffected.
   stream. SquashFS has no write path at all, and btrfs writes uncompressed
   extents.
 
-[Unreleased]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/antimatter-studios/rust-lzo1x/compare/v0.1.2...v0.2.0
