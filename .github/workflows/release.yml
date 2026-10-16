@@ -16,7 +16,7 @@ env:
   # cloned as its path sibling by every job that runs cargo, and passed to
   # the release-cli call below as core-ref. tests/release_attestation.rs
   # holds the three to one value.
-  FS_CORE_REF: v0.3.11
+  FS_CORE_REF: v0.3.12
 
 jobs:
   test:
