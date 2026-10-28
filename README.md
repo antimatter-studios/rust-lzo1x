@@ -3,6 +3,8 @@
 Pure-Rust **LZO1X compressor and decompressor**. No C bindings, no `unsafe`, no
 dependencies.
 
+Published on crates.io as `rust-lzo1x`; the library name is `lzo1x`.
+
 LZO1X is the byte-stream format produced by the LZO family of compressors
 (LZO1X-1, LZO1X-1-15, LZO1X-999). All LZO1X-\* encoders share a single decode
 grammar, so one decoder handles every variant. The format appears in SquashFS
